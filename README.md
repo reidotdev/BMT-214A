@@ -14,13 +14,21 @@ An opinionated starter for building websites on a fixed stack:
 
 ## Use it
 
-This is a **GitHub template repo**. Create a new repo from it (or `degit`), then:
+This is a **GitHub template repo**. Start a new site from it — the template
+gives the new repo a fresh history and its own `origin`:
 
 ```bash
+# creates a new PRIVATE repo from the template and clones it
+gh repo create my-site --template reidotdev/BMT-214A --private --clone
+cd my-site
 pnpm install
-pnpm setup     # names the project, wires env, creates a private repo, links Sanity + Vercel
+pnpm setup     # names the project, wires env, links Sanity + Vercel, first deploy
 pnpm dev       # http://localhost:3000  (Studio at /studio)
 ```
+
+No `gh`? Use the green **“Use this template”** button on the repo page, then
+clone your new repo and run `pnpm install && pnpm setup`. (`pnpm setup` detects
+the existing `origin` and skips repo creation.)
 
 Then run the **design-discovery** skill to fill in `docs/design.md`, apply your
 token overrides in `src/app/globals.css`, and build.

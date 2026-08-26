@@ -53,6 +53,19 @@ docs/design.md    # per-project design decisions (source of truth for the build)
 scripts/setup.mjs # one-command project setup (GitHub + Sanity + Vercel + deploy)
 ```
 
+## Starting a new site
+
+This repo is a **GitHub template**. Generate a new site from it (fresh history,
+its own `origin`), then run setup:
+
+```bash
+gh repo create my-site --template reidotdev/BMT-214A --private --clone
+cd my-site && pnpm install && pnpm setup
+```
+
+(Or use the "Use this template" button, clone, then `pnpm install && pnpm setup`.
+`pnpm setup` detects the template's existing `origin` and skips repo creation.)
+
 ## Commands
 
 - `pnpm dev` — local dev (open `/studio` for the CMS)

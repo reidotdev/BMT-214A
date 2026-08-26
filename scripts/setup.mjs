@@ -4,7 +4,8 @@
  *
  *   pnpm setup
  *
- * Walks through: naming the project, wiring env, creating a PRIVATE GitHub repo,
+ * Walks through: naming the project, wiring env, GitHub (pushes to the existing
+ * origin when generated from the template, else creates a PRIVATE repo),
  * initializing Sanity, linking Vercel, and a first deploy. Every remote/
  * irreversible step asks first. Missing CLIs are reported, not fatal — you can
  * run those steps by hand and re-run.
@@ -112,12 +113,27 @@ async function main() {
     console.log(c.green("  ✓ Initial commit created"));
   }
 
-  // --- GitHub (private) --------------------------------------------------
-  step(4, "GitHub repo (private)");
-  if (!has("gh")) {
+  // --- GitHub ------------------------------------------------------------
+  step(4, "GitHub repo");
+  const hasOrigin =
+    spawnSync("git", ["remote", "get-url", "origin"], { stdio: "ignore" })
+      .status === 0;
+  if (hasOrigin) {
+    // Repos generated from the GitHub template already have `origin` set to the
+    // new repo — no need to create one, just push.
+    console.log(
+      c.dim("  origin already set (template flow) — will push to it."),
+    );
+    if (await confirm("Push current commit to origin?")) {
+      run("git push -u origin main");
+      console.log(c.green("  ✓ Pushed"));
+    } else {
+      console.log(c.dim("  Skipped."));
+    }
+  } else if (!has("gh")) {
     console.log(
       c.yellow(
-        "  gh CLI not found — skipping. Create a PRIVATE repo manually and push.",
+        "  No origin and gh CLI not found — create a PRIVATE repo manually and push.",
       ),
     );
   } else if (await confirm(`Create PRIVATE GitHub repo "${name}" and push?`)) {
