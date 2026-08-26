@@ -82,4 +82,6 @@ banner is needed) — add it per project if wanted.
 ## The React Aria MCP
 
 Prefer the official React Aria MCP (https://react-aria.adobe.com/ai) for correct,
-current component APIs when adding/restyling components — over memory.
+current component APIs when adding/restyling components — over memory. It's wired
+project-scoped in `.mcp.json` (runs locally via `npx @react-aria/mcp`, no auth);
+approve it when your client prompts on first use.
