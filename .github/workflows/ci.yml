@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Build
+        run: pnpm build
+        env:
+          # Build must succeed without real credentials — the app guards Sanity
+          # access behind `sanityConfigured` (see src/sanity/env.ts).
+          NEXT_PUBLIC_SITE_URL: https://example.com
