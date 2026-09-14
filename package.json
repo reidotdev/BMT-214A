@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
+    "verify:template": "node scripts/verify-template.mjs",
+    "test:e2e": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typegen": "sanity schema extract && sanity typegen generate",
@@ -30,6 +32,8 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.56.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -46,7 +50,8 @@
   "packageManager": "pnpm@10.33.0",
   "pnpm": {
     "overrides": {
-      "@sanity/client": "7.26.2"
+      "@sanity/client": "7.26.2",
+      "playwright-core": "1.56.1"
     },
     "onlyBuiltDependencies": [
       "esbuild"

@@ -46,6 +46,8 @@ src/
   app/            # routes; /studio embeds Sanity Studio; sitemap/robots/og here
   components/
     ui/           # pre-styled React Aria Components (the core set + index.ts)
+    layout/       # Section — the content band every page section uses
+    media/        # BackgroundVideo and friends
     motion/       # GSAP helpers (Reveal, …)
   lib/            # cn(), siteConfig
   sanity/         # env, client, image, live, queries, schemaTypes, structure
@@ -71,6 +73,8 @@ cd my-site && pnpm install && pnpm setup
 - `pnpm dev` — local dev (open `/studio` for the CMS)
 - `pnpm build` / `pnpm start` — production build / serve
 - `pnpm lint` · `pnpm typecheck` · `pnpm format` — the checks CI runs
+- `pnpm verify:template` — assert the invariants below still hold
+- `pnpm test:e2e` — Playwright: keyboard focus + an axe pass (Chromium only)
 - `pnpm typegen` — regenerate Sanity query types after editing schemas
 - `pnpm setup` — scaffold a new project (naming, env, repo, Sanity, Vercel)
 
@@ -78,12 +82,61 @@ cd my-site && pnpm install && pnpm setup
 
 - **design-discovery** — the new-project interview → writes `docs/design.md`.
 - **restyle-component** — add/re-skin a React Aria Component the right way.
+- **technical-plan** — plan a large feature in `docs/`, then annotate it with
+  what the build actually found.
 
 ## SEO & analytics
 
 SEO ships on: Metadata API, `sitemap.ts`, `robots.ts` (excludes `/studio`),
 dynamic `opengraph-image`. **No analytics** is wired by default (so no cookie
 banner is needed) — add it per project if wanted.
+
+## Gotchas that cost a day
+
+Every item here failed silently — no error, no failing check, nothing in the
+console. `pnpm verify:template` now catches most of them; read this before
+debugging anything in the list.
+
+1. **The focus ring and `outline-hidden`.** `outline-hidden` sets
+   `--tw-outline-style: none`, and Tailwind v4's `outline-2` emits
+   `outline-style: var(--tw-outline-style)`. Combined without
+   `data-[focus-visible]:outline-solid`, the ring computes to
+   `outline-style: none` and **no component paints a keyboard focus
+   indicator**. See `src/components/ui/styles.ts`; `e2e/a11y.spec.ts` guards it.
+   Note that inspecting the compiled CSS does NOT prove this works — Tailwind
+   generates a utility whenever the class name appears anywhere in the source,
+   a code comment included. Only a computed style on a really focused element
+   settles it.
+2. **`tsc` cannot see `PageProps` / `LayoutProps`.** Those globals live in
+   `.next/types`, which is gitignored and written by `next typegen`. `pnpm
+typecheck` runs typegen first for exactly this reason — a bare `tsc
+--noEmit` fails on every clean checkout.
+3. **Tailwind v4 tree-shakes theme variables.** Point a token at one of
+   Tailwind's own colour vars (`var(--color-slate-900)`) and, unless some
+   utility references that shade, the variable is never emitted and the token
+   resolves to nothing — every colour on the site, silently. Use
+   `@import "tailwindcss" theme(static)` while the palette is unsettled, then
+   inline literals and drop it. Details in `src/app/globals.css`.
+4. **`sanity init` rewrites files it does not own.** It replaces
+   `src/sanity/env.ts` with a version that has no `sanityConfigured` export —
+   which `layout.tsx` imports, so the next build dies with
+   `Export sanityConfigured doesn't exist in target module` — reverts
+   `sanity.config.ts` / `sanity.cli.ts`, drops starter schema types in, and
+   rewrites `package.json` (observed: a whole-major Sanity downgrade, which
+   then pulled in `styled-components`). `scripts/setup.mjs` snapshots and
+   restores those paths around the call; if you run `sanity init` by hand,
+   `git diff` before committing.
+5. **`sanityFetch` cannot run in `generateStaticParams`.** It reads
+   `draftMode()`, a request-scoped API, and `generateStaticParams` runs at
+   build time with no request. Use the plain `client` there instead.
+6. **ESLint ignore patterns must be `**/`-prefixed.** Root-relative patterns
+   miss build output in nested checkouts (`.claude/worktrees/*/.next`), and
+   lint then walks tens of thousands of generated files.
+7. **Contrast is measured against the darkest surface, not white.**
+   `--muted-foreground` renders on `--muted` and `--secondary` as well as on
+   the page background. The default previously measured 4.45:1 on `--muted` —
+   under the AA floor — while passing on white. Re-theme accordingly; the axe
+   test catches it.
 
 ## Conventions
 

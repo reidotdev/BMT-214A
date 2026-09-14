@@ -44,3 +44,18 @@ sanity.types.ts
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# claude code worktrees (nested git worktrees, never commit)
+.claude/worktrees/
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Source media. Keep video and other large assets OUT of git — a hero
+# background lives in the history forever and is never worth it. Upload to
+# Vercel Blob or Sanity and reference the URL. Remove this rule deliberately
+# if a project really must ship a file from the repo.
+/public/video/

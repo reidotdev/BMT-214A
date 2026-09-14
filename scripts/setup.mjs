@@ -13,7 +13,17 @@
  * Requires (only for the steps that use them): gh, sanity, vercel — all logged in.
  * No external npm deps; Node built-ins only.
  */
-import { readFileSync, writeFileSync, existsSync, copyFileSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  copyFileSync,
+  cpSync,
+  rmSync,
+  mkdtempSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { execSync, spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
@@ -157,7 +167,72 @@ async function main() {
         "  Follow the prompts. Choose the embedded config; keep dataset 'production'.",
       ),
     );
-    run("npx sanity@latest init --env=.env.local");
+
+    // `sanity init` does not just write env vars — its bootstrap rewrites any
+    // file it believes it owns. Left unguarded it replaces src/sanity/env.ts
+    // with a version that has no `sanityConfigured` export (which layout.tsx
+    // imports, so the next build dies with "Export sanityConfigured doesn't
+    // exist in target module"), reverts sanity.config.ts / sanity.cli.ts to its
+    // starter versions, drops blog-starter schema types into src/sanity, and
+    // rewrites package.json — in one observed case downgrading Sanity a whole
+    // major, which then dragged styled-components in as a runtime dependency.
+    //
+    // Everything it would write, this template already has a better version of,
+    // and every Sanity dependency is already in package.json. So we take the
+    // one thing init is actually needed for — the project id and dataset in
+    // .env.local — and restore the rest.
+    const protectedPaths = [
+      "package.json",
+      "pnpm-lock.yaml",
+      "sanity.config.ts",
+      "sanity.cli.ts",
+      "src/sanity",
+      "src/app/studio",
+    ].filter((rel) => existsSync(rel));
+
+    const backup = mkdtempSync(join(tmpdir(), "boilerplate-sanity-"));
+    for (const rel of protectedPaths) {
+      cpSync(rel, join(backup, rel.replace(/\//g, "__")), { recursive: true });
+    }
+
+    // Pin the CLI to the Sanity version this project actually runs, so init
+    // cannot move the Studio to a different major behind your back.
+    const sanityVersion =
+      JSON.parse(readFileSync("package.json", "utf8")).dependencies?.sanity ??
+      "latest";
+
+    try {
+      run(`npx sanity@${sanityVersion} init --env=.env.local`);
+    } finally {
+      const clobbered = [];
+      for (const rel of protectedPaths) {
+        const saved = join(backup, rel.replace(/\//g, "__"));
+        // Only report a real difference for single files; directories are
+        // restored wholesale either way.
+        if (
+          !existsSync(rel) ||
+          (existsSync(rel) &&
+            !rel.includes("/") &&
+            readFileSync(rel, "utf8") !== readFileSync(saved, "utf8"))
+        ) {
+          clobbered.push(rel);
+        }
+        rmSync(rel, { recursive: true, force: true });
+        cpSync(saved, rel, { recursive: true });
+      }
+      rmSync(backup, { recursive: true, force: true });
+
+      if (clobbered.length) {
+        console.log(
+          c.yellow(
+            `  ↺ Restored files that \`sanity init\` overwrote: ${clobbered.join(", ")}`,
+          ),
+        );
+      } else {
+        console.log(c.dim("  ↺ Boilerplate Sanity files left intact."));
+      }
+    }
+
     console.log(
       c.green(
         "  ✓ Sanity initialized (project id/dataset written to .env.local)",
@@ -172,8 +247,22 @@ async function main() {
     console.log(c.dim("  Skipped."));
   }
 
+  // --- Template health ---------------------------------------------------
+  // Run straight after Sanity: if its bootstrap clobbered something, say so now
+  // rather than letting it surface as a failed deploy days later.
+  step(6, "Template invariants");
+  try {
+    execSync("node scripts/verify-template.mjs", { stdio: "inherit" });
+  } catch {
+    console.log(
+      c.yellow(
+        "  Some invariants are broken (see above). Fix them before deploying.",
+      ),
+    );
+  }
+
   // --- Vercel ------------------------------------------------------------
-  step(6, "Vercel");
+  step(7, "Vercel");
   if (!has("vercel")) {
     console.log(
       c.yellow(

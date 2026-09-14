@@ -47,11 +47,52 @@ wherever style is discussed.
 - Documents, singletons, and the fields each needs. What must be editable in the
   Studio vs. hardcoded.
 
+### 6. Responsive
+
+A design handed over at one width is the single most common cause of a stalled
+build. Ask before any UI is written:
+
+- Which widths is the design drawn at? If it is desktop-only, say so in
+  `docs/design.md` explicitly rather than discovering it mid-build.
+- What does each **signature element** degrade to on a phone? Ambitious moments
+  are exactly the ones with no obvious small-screen form, and inventing one
+  halfway through costs more than deciding it now.
+- Anything that must not reflow (a fixed band, a measured type scale)?
+
+### 7. Content and assets
+
+- **Copy status.** What exists, what is being written, what is placeholder? A
+  build against `[placeholder]` text carries TODOs for weeks.
+- **Asset inventory.** Logos, photography, video — who provides them, in what
+  format, when. Agree that source video is re-encoded and hosted off-repo
+  before anyone commits a file (see the Gotchas in `CLAUDE.md`).
+- **Language and locale.** Which language is the site in, and is more than one
+  ever likely? `lang` on `<html>` and any i18n routing follow from this, and
+  retrofitting is far more expensive than deciding up front.
+
+### 8. Motion brief
+
+"Signature elements" (§3) tends to collect the big moments and leave ordinary
+motion unspecified, which then never gets decided. Go section by section and
+name the treatment: scroll reveal, parallax, counter, hover only, or none. The
+`Reveal` helper covers the common case. Everything non-essential must be gated
+behind `prefers-reduced-motion`.
+
 ## Output
 
 Write everything into `docs/design.md` (the template already has the sections).
 Fill the token-override and component-modification tables concretely — those
 drive the actual work. End by listing open questions and proposing the first
 build steps (usually: apply token overrides, then build the hero).
+
+Two things to carry into the document specifically:
+
+- **Record what is still unknown as an open question with a name attached.**
+  "Trust logos — five slots, no brands supplied" is actionable; silence is not.
+- **Check new palette values for contrast before writing them down.**
+  `--muted-foreground` in particular has to clear 4.5:1 against the _darkest_
+  light surface it lands on (`--muted`, `--secondary`), not just against the
+  page background. `pnpm test:e2e` runs an axe pass that will catch it, but
+  choosing a passing value now avoids a re-theme later.
 
 Then confirm the brief with the user before building.

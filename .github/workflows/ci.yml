@@ -21,9 +21,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Invariants that break silently — a focus ring that stops painting, a
+      # scaffolder that rewrote a file the app imports from. Runs first and
+      # needs no build, so a clobbered checkout fails in seconds with an
+      # explanation rather than as a confusing downstream error.
+      - name: Verify template invariants
+        run: pnpm verify:template
+
       - name: Lint
         run: pnpm lint
 
+      # `typecheck` runs `next typegen` itself, which writes the App Router's
+      # PageProps/LayoutProps globals into .next/types. Without it tsc fails
+      # with "Cannot find name 'LayoutProps'" on every clean checkout.
       - name: Typecheck
         run: pnpm typecheck
 
@@ -36,3 +46,38 @@ jobs:
           # Build must succeed without real credentials — the app guards Sanity
           # access behind `sanityConfigured` (see src/sanity/env.ts).
           NEXT_PUBLIC_SITE_URL: https://example.com
+
+  # Browser checks, in their own job so a slow browser install never blocks the
+  # fast feedback above. The suite is deliberately tiny — see e2e/a11y.spec.ts
+  # for why a focus ring cannot be verified any other way.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Only Chromium: the suite covers keyboard focus and an axe pass, neither
+      # of which needs a browser matrix on a starter.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run end-to-end tests
+        run: pnpm test:e2e
+        env:
+          NEXT_PUBLIC_SITE_URL: http://localhost:3000
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
