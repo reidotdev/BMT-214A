@@ -1,0 +1,52 @@
+{
+  "$comment": [
+    "Answers for a headless scaffold run:",
+    "  node scripts/setup.mjs --config scaffold.config.json --non-interactive",
+    "",
+    "This is what makes the template usable without a terminal you can type",
+    "into — from a phone, a web session, or CI. Copy this file, edit it, run it.",
+    "",
+    "Each remote step takes one of three answers, and the third is the point:",
+    "  true    — do it now (needs the CLI, logged in)",
+    "  false   — I do not want this",
+    "  \"later\" — I want it, but this environment cannot do it: the run prints",
+    "            the exact command in its closing to-do list instead.",
+    "Absent means false, so a forgotten key never triggers something remote.",
+    "",
+    "No secrets belong in this file. Tokens go in .env.local, which is gitignored."
+  ],
+
+  "name": "my-site",
+  "description": "A new website.",
+  "siteUrl": "https://my-site.com",
+
+  "$comment_modules": [
+    "Optional modules to install, by id. Omit or leave empty for none.",
+    "Currently available: \"three\" (three.js / WebGL — see docs/3d.md).",
+    "Run `node scripts/setup.mjs --modules-only` later to add one you skipped."
+  ],
+  "modules": [],
+
+  "$comment_github": [
+    "push:   push the first commit to an origin that already exists (the flow",
+    "        you get from 'Use this template', which sets origin for you).",
+    "create: create a new PRIVATE repo and push. Needs the gh CLI, which a",
+    "        cloud/web session does not have — an assistant can do this over",
+    "        the GitHub API instead, then set origin and push."
+  ],
+  "github": { "push": true, "create": "later" },
+
+  "$comment_sanity": [
+    "Needs the sanity CLI, logged in. Unavailable in a cloud/web session, so",
+    "leave false there — the run will list the exact command to finish later.",
+    "The scaffolder protects the boilerplate's Sanity files from being",
+    "overwritten by init either way; see the Sanity step in scripts/setup.mjs."
+  ],
+  "sanity": { "init": "later" },
+
+  "$comment_vercel": [
+    "Needs the vercel CLI, logged in. Same story as Sanity.",
+    "link pushes NEXT_PUBLIC_* and Sanity vars from .env.local to the project."
+  ],
+  "vercel": { "link": "later", "deploy": false }
+}

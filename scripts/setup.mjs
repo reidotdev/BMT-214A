@@ -15,6 +15,14 @@
  * runs just the optional-modules step, for a project that skipped a module the
  * first time round and has since grown into needing it.
  *
+ *   node scripts/setup.mjs --config scaffold.config.json --non-interactive
+ *
+ * takes every answer from a JSON file and never reads stdin. This is what makes
+ * the template usable from a phone, a web session, or CI: an assistant (or you)
+ * writes the config, and the scaffolder runs headless. Steps whose CLI is
+ * missing are skipped, not fatal, and every one of them is listed at the end
+ * with the exact command to finish it later. See scaffold.config.example.json.
+ *
  * Requires (only for the steps that use them): gh, sanity, vercel — all logged in.
  * No external npm deps; Node built-ins only.
  */
@@ -52,12 +60,83 @@ const c = {
   dim: (s) => `\x1b[2m${s}\x1b[0m`,
 };
 
-const ask = async (q, def = "") => {
+const ARGV = process.argv.slice(2);
+
+/** Read a flag's value: `--config path` or `--config=path`. */
+function flag(name) {
+  const i = ARGV.indexOf(`--${name}`);
+  if (i !== -1) return ARGV[i + 1] ?? true;
+  const inline = ARGV.find((a) => a.startsWith(`--${name}=`));
+  return inline ? inline.slice(name.length + 3) : undefined;
+}
+
+const CONFIG_PATH = flag("config");
+const CONFIG = CONFIG_PATH
+  ? JSON.parse(readFileSync(String(CONFIG_PATH), "utf8"))
+  : {};
+
+/**
+ * Headless mode: every answer comes from the config file and stdin is never
+ * read. Passing --config implies it, because a config file and an interview
+ * answering the same questions is a contradiction — pass neither to get the
+ * interactive walkthrough.
+ */
+const NON_INTERACTIVE =
+  ARGV.includes("--non-interactive") || ARGV.includes("--yes") || !!CONFIG_PATH;
+
+/** Look up a dotted path in the config: `pick("vercel.deploy")`. */
+function pick(path) {
+  return path
+    .split(".")
+    .reduce((node, key) => (node == null ? undefined : node[key]), CONFIG);
+}
+
+/**
+ * Things the run could not finish — almost always a missing CLI. Collected as
+ * they happen and printed at the end, because in headless mode nobody is
+ * watching the scroll go past.
+ */
+const todo = [];
+const defer = (what, how) => {
+  todo.push({ what, how });
+  console.log(c.yellow(`  → deferred: ${what}`));
+};
+
+const ask = async (key, q, def = "") => {
+  if (NON_INTERACTIVE) {
+    const chosen = pick(key) ?? def;
+    console.log(`  ${q}: ${c.dim(String(chosen) || "(empty)")}`);
+    return chosen;
+  }
   const a = (await question(`${q}${def ? c.dim(` (${def})`) : ""}: `)).trim();
   return a || def;
 };
-const confirm = async (q) =>
-  /^y(es)?$/i.test((await question(`${q} ${c.dim("[y/N]")} `)).trim());
+
+/**
+ * `deferHint` ({ what, how }) makes a third answer possible in the config:
+ * the string "later" means "I want this, but this environment cannot do it".
+ * It is not the same as false, which means "I don't want it" — and the
+ * difference matters most in the case this mode exists for. Scaffolding from a
+ * phone cannot reach the Sanity or Vercel CLIs, so those steps must end up in
+ * the closing to-do list rather than being silently dropped.
+ */
+const confirm = async (key, q, deferHint) => {
+  if (NON_INTERACTIVE) {
+    const chosen = pick(key) ?? false;
+
+    if (chosen === "later" && deferHint) {
+      console.log(`  ${q} ${c.dim("later")}`);
+      defer(deferHint.what, deferHint.how);
+      return false;
+    }
+
+    // Absent means no. A headless run must never do something remote or
+    // irreversible because a key was forgotten.
+    console.log(`  ${q} ${c.dim(chosen ? "yes" : "no")}`);
+    return chosen === true;
+  }
+  return /^y(es)?$/i.test((await question(`${q} ${c.dim("[y/N]")} `)).trim());
+};
 const has = (cmd) =>
   spawnSync(cmd, ["--version"], { stdio: "ignore" }).status === 0;
 const run = (cmd) => {
@@ -158,7 +237,12 @@ async function optionalModules(n) {
       console.log(c.green("  ✓ Already installed — nothing to do."));
       continue;
     }
-    if (!(await confirm(`  Add ${mod.id}?`))) {
+    // Headless config lists the modules it wants by id: `"modules": ["three"]`.
+    const wanted = NON_INTERACTIVE
+      ? (pick("modules") ?? []).includes(mod.id)
+      : await confirm(`modules.${mod.id}`, `  Add ${mod.id}?`);
+
+    if (!wanted) {
       console.log(c.dim("  Skipped — nothing added."));
       continue;
     }
@@ -187,10 +271,14 @@ async function main() {
 
   // --- Naming ------------------------------------------------------------
   step(1, "Project details");
-  const rawName = await ask("Project name", "my-site");
+  const rawName = await ask("name", "Project name", "my-site");
   const name = slugify(rawName);
-  const description = await ask("One-line description", "A new website.");
-  const siteUrl = await ask("Production URL (optional)", "");
+  const description = await ask(
+    "description",
+    "One-line description",
+    "A new website.",
+  );
+  const siteUrl = await ask("siteUrl", "Production URL (optional)", "");
 
   // package.json name
   const pkgPath = "package.json";
@@ -256,19 +344,27 @@ async function main() {
     console.log(
       c.dim("  origin already set (template flow) — will push to it."),
     );
-    if (await confirm("Push current commit to origin?")) {
+    if (await confirm("github.push", "Push current commit to origin?")) {
       run("git push -u origin main");
       console.log(c.green("  ✓ Pushed"));
     } else {
       console.log(c.dim("  Skipped."));
     }
   } else if (!has("gh")) {
-    console.log(
-      c.yellow(
-        "  No origin and gh CLI not found — create a PRIVATE repo manually and push.",
-      ),
+    defer(
+      "GitHub repo not created (no origin, and the gh CLI is unavailable)",
+      `gh repo create ${name} --private --source=. --remote=origin --push`,
     );
-  } else if (await confirm(`Create PRIVATE GitHub repo "${name}" and push?`)) {
+  } else if (
+    await confirm(
+      "github.create",
+      `Create PRIVATE GitHub repo "${name}" and push?`,
+      {
+        what: `GitHub repo "${name}" not created`,
+        how: `gh repo create ${name} --private --source=. --remote=origin --push`,
+      },
+    )
+  ) {
     run(`gh repo create ${name} --private --source=. --remote=origin --push`);
     console.log(c.green("  ✓ Private repo created and pushed"));
   } else {
@@ -278,12 +374,20 @@ async function main() {
   // --- Sanity ------------------------------------------------------------
   step(5, "Sanity");
   if (!has("sanity") && !has("npx")) {
-    console.log(
-      c.yellow(
-        "  sanity CLI not found — skipping. Run `npx sanity init` later.",
-      ),
+    defer(
+      "Sanity project not created (the sanity CLI is unavailable)",
+      "npx sanity@latest init --env=.env.local",
     );
-  } else if (await confirm("Run `sanity init` to create/link a project now?")) {
+  } else if (
+    await confirm(
+      "sanity.init",
+      "Run `sanity init` to create/link a project now?",
+      {
+        what: "Sanity project not created — the app builds without it, but /studio has no content until it is",
+        how: "npx sanity@latest init --env=.env.local",
+      },
+    )
+  ) {
     console.log(
       c.dim(
         "  Follow the prompts. Choose the embedded config; keep dataset 'production'.",
@@ -390,12 +494,20 @@ async function main() {
   // --- Vercel ------------------------------------------------------------
   step(8, "Vercel");
   if (!has("vercel")) {
-    console.log(
-      c.yellow(
-        "  vercel CLI not found — skipping. Run `vercel link` + `vercel deploy` later.",
-      ),
+    defer(
+      "Vercel not linked (the vercel CLI is unavailable)",
+      "vercel link && vercel --prod",
     );
-  } else if (await confirm("Link this project to Vercel and push env vars?")) {
+  } else if (
+    await confirm(
+      "vercel.link",
+      "Link this project to Vercel and push env vars?",
+      {
+        what: "Vercel not linked, so nothing is deployed yet",
+        how: "vercel link && vercel --prod",
+      },
+    )
+  ) {
     run("vercel link");
     console.log(
       c.dim("  Pushing NEXT_PUBLIC_* + Sanity vars from .env.local to Vercel…"),
@@ -416,7 +528,7 @@ async function main() {
     }
     console.log(c.green("  ✓ Linked and env pushed"));
 
-    if (await confirm("Deploy a production build now?")) {
+    if (await confirm("vercel.deploy", "Deploy a production build now?")) {
       run("vercel --prod");
     }
   } else {
@@ -435,6 +547,21 @@ async function main() {
   console.log(
     `  3. Apply token overrides in ${c.b("src/app/globals.css")}, then build\n`,
   );
+
+  // In a headless run nobody watched the output scroll past, so anything that
+  // could not be finished is restated here with the command that finishes it.
+  if (todo.length) {
+    console.log(c.b("Still to do (needs a CLI this environment lacks):\n"));
+    for (const { what, how } of todo) {
+      console.log(`  • ${what}`);
+      console.log(`    ${c.dim(`$ ${how}`)}`);
+    }
+    console.log(
+      c.dim(
+        "\n  Run these from a machine with the CLIs installed and logged in.\n",
+      ),
+    );
+  }
 
   rl?.close();
 }
