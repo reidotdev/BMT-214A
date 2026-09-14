@@ -20,6 +20,9 @@
 # production
 /build
 
+# storybook (`pnpm build-storybook` output — deployed, never committed)
+/storybook-static/
+
 # misc
 .DS_Store
 *.pem

@@ -16,6 +16,7 @@ manual; deeper procedures live in `.claude/skills/`.
 | Icons      | **Lucide** (`lucide-react`)                                                   |
 | CMS        | **Sanity**, Studio embedded at `/studio`                                      |
 | Animation  | **GSAP** (`@gsap/react`)                                                      |
+| Comp. docs | **Storybook** (`@storybook/nextjs-vite`) — one story per `ui` component       |
 | Font       | **Inter** (`next/font`)                                                       |
 | Hosting    | **Vercel** · **Package manager: pnpm**                                        |
 
@@ -33,7 +34,10 @@ manual; deeper procedures live in `.claude/skills/`.
    `data-[selected]`, `data-[focus-visible]`, `data-[disabled]`, `data-[entering]`,
    `data-[exiting]`. Merge caller `className` with `composeRenderProps`.
 4. **The core component set is a starting point, not a ceiling.** Pull any other
-   component from `react-aria-components` and style it the same way.
+   component from `react-aria-components` and style it the same way. Every
+   component in `src/components/ui/` has a story in `src/stories/` — that is
+   where the set is browsed, and where a new or restyled one has to land too
+   (`pnpm storybook`, `docs/storybook.md`).
 5. **Discovery before UI.** A new project starts with the `design-discovery`
    skill, which writes `docs/design.md`. Build against that document.
 6. **Sanity access is guarded.** `src/sanity/env.ts` exposes `sanityConfigured`;
@@ -51,7 +55,10 @@ src/
     motion/       # GSAP helpers (Reveal, …)
   lib/            # cn(), siteConfig
   sanity/         # env, client, image, live, queries, schemaTypes, structure
+  stories/        # one *.stories.tsx per ui component + Foundations/tokens
+.storybook/       # Storybook config; preview.css imports the app's globals.css
 docs/design.md    # per-project design decisions (source of truth for the build)
+docs/storybook.md # running, writing and deploying the component library
 scripts/setup.mjs # one-command project setup (GitHub + Sanity + Vercel + deploy)
 ```
 
@@ -71,6 +78,9 @@ cd my-site && pnpm install && pnpm setup
 ## Commands
 
 - `pnpm dev` — local dev (open `/studio` for the CMS)
+- `pnpm storybook` — the component library on port 6006; `pnpm build-storybook`
+  for a static build. The whole design system at a glance, on a light or dark
+  surface — the fastest way to see a token change land. See `docs/storybook.md`.
 - `pnpm build` / `pnpm start` — production build / serve
 - `pnpm lint` · `pnpm typecheck` · `pnpm format` — the checks CI runs
 - `pnpm verify:template` — assert the invariants below still hold
@@ -113,7 +123,8 @@ so a project that declines carries none of it.
 ## Skills
 
 - **design-discovery** — the new-project interview → writes `docs/design.md`.
-- **restyle-component** — add/re-skin a React Aria Component the right way.
+- **restyle-component** — add/re-skin a React Aria Component the right way, and
+  land its story alongside it.
 - **technical-plan** — plan a large feature in `docs/`, then annotate it with
   what the build actually found.
 

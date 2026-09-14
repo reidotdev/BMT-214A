@@ -3,3 +3,6 @@ node_modules
 pnpm-lock.yaml
 sanity.types.ts
 schema.json
+
+# storybook static build output — minified bundles, never source
+storybook-static

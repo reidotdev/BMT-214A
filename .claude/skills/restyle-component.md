@@ -41,8 +41,17 @@ that for free and must not break it. Style via:
 5. **Respect motion preferences:** gate non-essential animation behind
    `prefers-reduced-motion` (see `src/components/motion/reveal.tsx`).
 6. **Export** it from `src/components/ui/index.ts`.
-7. **Verify:** `pnpm typecheck` and `pnpm lint` clean; tab through the component
-   with the keyboard; check both light and dark themes.
+7. **Write (or update) its story** in `src/stories/<name>.stories.tsx`. This is
+   not optional — every component in the core set has one, and a component with
+   no story is invisible to the next person re-theming the project. Cover the
+   variants and the interaction states (use `ForceState` from
+   `src/stories/story-helpers.tsx` to pin hover / press / focus-visible, which
+   props cannot reach). Restyling an existing component means updating its story
+   in the same change, so the gallery never shows a look the app no longer has.
+   Full conventions: `docs/storybook.md`.
+8. **Verify:** `pnpm typecheck` and `pnpm lint` clean; open `pnpm storybook`,
+   flip the **Surface** toolbar through Light / Dark / Side by side, read the
+   Accessibility panel, and tab through the component with the keyboard.
 
 ## Checklist before done
 
@@ -52,3 +61,4 @@ that for free and must not break it. Style via:
 - [ ] Visible focus ring, keyboard-navigable
 - [ ] Reduced-motion respected
 - [ ] Exported from the barrel; typecheck + lint green
+- [ ] Story added or updated in `src/stories/`, clean on both surfaces

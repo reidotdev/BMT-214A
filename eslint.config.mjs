@@ -16,6 +16,10 @@ const eslintConfig = defineConfig([
     "**/out/**",
     "**/build/**",
     "**/next-env.d.ts",
+    // Storybook's static build output — minified bundles, never source. Without
+    // this carve-out `pnpm lint` walks the whole bundle after a
+    // `pnpm build-storybook`.
+    "**/storybook-static/**",
     // Claude Code worktrees are separate checkouts — linted in their own tree.
     ".claude/worktrees/**",
   ]),
