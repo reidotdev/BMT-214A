@@ -76,7 +76,39 @@ cd my-site && pnpm install && pnpm setup
 - `pnpm verify:template` — assert the invariants below still hold
 - `pnpm test:e2e` — Playwright: keyboard focus + an axe pass (Chromium only)
 - `pnpm typegen` — regenerate Sanity query types after editing schemas
-- `pnpm setup` — scaffold a new project (naming, env, repo, Sanity, Vercel)
+- `pnpm setup` — scaffold a new project (naming, env, repo, Sanity, modules,
+  Vercel)
+- `node scripts/setup.mjs --modules-only` — re-run just the optional-modules
+  step on a project that is already set up
+
+## Optional modules
+
+Some capabilities are too heavy to hand every site, so the template ships
+**without** them and `pnpm setup` offers them once (step 7, defaulting to no).
+Declining costs nothing: no dependency, no file, nothing to clean up later.
+
+| Module  | Adds                                          | The point                                                                                                                           |
+| ------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `three` | `three`, `@types/three`, and **`docs/3d.md`** | 3D/WebGL. ~127 KB gzipped when it loads; `docs/3d.md` is the recipe that keeps it out of the main bundle and the content in the DOM |
+
+There is no starter 3D component on purpose — a half-built scene is worse than
+none. `docs/3d.md` is the thing worth having.
+
+**Adding a module to a project that skipped it** takes a minute, either way:
+
+```bash
+node scripts/setup.mjs --modules-only   # re-runs just that step
+
+# …or by hand — the same two things that step does:
+pnpm add three && pnpm add -D @types/three
+cp scripts/modules/three/3d.md docs/3d.md
+```
+
+**Adding a new _kind_ of module** is a data edit, not new control flow: append an
+entry to `MODULES` in `scripts/setup.mjs` (`id`, `label`, `description`,
+`dependencies`, `devDependencies`, `files`) and put whatever it copies under
+`scripts/modules/<id>/`. Keep each payload there rather than in its destination,
+so a project that declines carries none of it.
 
 ## Skills
 

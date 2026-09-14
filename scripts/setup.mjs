@@ -6,9 +6,14 @@
  *
  * Walks through: naming the project, wiring env, GitHub (pushes to the existing
  * origin when generated from the template, else creates a PRIVATE repo),
- * initializing Sanity, linking Vercel, and a first deploy. Every remote/
- * irreversible step asks first. Missing CLIs are reported, not fatal — you can
- * run those steps by hand and re-run.
+ * initializing Sanity, template invariants, optional modules, linking Vercel,
+ * and a first deploy. Every remote/irreversible step asks first. Missing CLIs
+ * are reported, not fatal — you can run those steps by hand and re-run.
+ *
+ *   node scripts/setup.mjs --modules-only
+ *
+ * runs just the optional-modules step, for a project that skipped a module the
+ * first time round and has since grown into needing it.
  *
  * Requires (only for the steps that use them): gh, sanity, vercel — all logged in.
  * No external npm deps; Node built-ins only.
@@ -21,14 +26,24 @@ import {
   cpSync,
   rmSync,
   mkdtempSync,
+  mkdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execSync, spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 
-const rl = createInterface({ input: stdin, output: stdout });
+// Created on the first question rather than at import time, so importing this
+// file — to exercise the module table from a test, say — neither holds stdin
+// open nor leaves a dangling interface.
+let rl;
+const question = (q) => {
+  rl ??= createInterface({ input: stdin, output: stdout });
+  return rl.question(q);
+};
+
 const c = {
   b: (s) => `\x1b[1m${s}\x1b[0m`,
   green: (s) => `\x1b[32m${s}\x1b[0m`,
@@ -38,13 +53,11 @@ const c = {
 };
 
 const ask = async (q, def = "") => {
-  const a = (
-    await rl.question(`${q}${def ? c.dim(` (${def})`) : ""}: `)
-  ).trim();
+  const a = (await question(`${q}${def ? c.dim(` (${def})`) : ""}: `)).trim();
   return a || def;
 };
 const confirm = async (q) =>
-  /^y(es)?$/i.test((await rl.question(`${q} ${c.dim("[y/N]")} `)).trim());
+  /^y(es)?$/i.test((await question(`${q} ${c.dim("[y/N]")} `)).trim());
 const has = (cmd) =>
   spawnSync(cmd, ["--version"], { stdio: "ignore" }).status === 0;
 const run = (cmd) => {
@@ -60,7 +73,116 @@ function slugify(s) {
     .replace(/^-+|-+$/g, "");
 }
 
+/**
+ * Optional modules — capabilities a site may need and most sites do not, so the
+ * template ships without them and setup offers each one once, defaulting to no.
+ * Saying no must stay free: nothing installed, nothing copied, nothing to clean
+ * up afterwards.
+ *
+ * Adding the next module is a data edit here, not new control flow. Give it an
+ * id, a label, one line on what it is for and what it costs, the packages to
+ * install, and any files to copy in from `scripts/modules/<id>/`. Module files
+ * live there rather than in their destination so a project that skips the
+ * module never carries the payload.
+ */
+export const MODULES = [
+  {
+    id: "three",
+    label: "three.js — 3D / WebGL",
+    description:
+      "Real 3D in the page. ~127 KB gzipped when it loads; docs/3d.md is the recipe that keeps it out of the main bundle and the content accessible.",
+    dependencies: ["three"],
+    devDependencies: ["@types/three"],
+    files: [{ from: "scripts/modules/three/3d.md", to: "docs/3d.md" }],
+  },
+];
+
+/** Installed = every package the module adds is already in package.json. */
+export function moduleInstalled(mod, pkg) {
+  const present = { ...pkg.dependencies, ...pkg.devDependencies };
+  return [...(mod.dependencies ?? []), ...(mod.devDependencies ?? [])].every(
+    (name) => name in present,
+  );
+}
+
+/**
+ * Install one module: dependencies via pnpm, then its files.
+ *
+ * `exec`/`log` are injectable so the module table can be exercised without
+ * running pnpm or the interview. Returns the files actually copied.
+ */
+export function installModule(mod, { exec = run, log = console.log } = {}) {
+  if (mod.dependencies?.length) {
+    exec(`pnpm add ${mod.dependencies.join(" ")}`);
+  }
+  if (mod.devDependencies?.length) {
+    exec(`pnpm add -D ${mod.devDependencies.join(" ")}`);
+  }
+
+  const copied = [];
+  for (const file of mod.files ?? []) {
+    if (!existsSync(file.from)) {
+      log(c.yellow(`  ! Module file missing: ${file.from} — skipped.`));
+      continue;
+    }
+    // Never clobber: a re-run, or a project that has already edited the doc,
+    // keeps what it has.
+    if (existsSync(file.to)) {
+      log(c.dim(`  ${file.to} already exists — left untouched.`));
+      continue;
+    }
+    mkdirSync(dirname(file.to), { recursive: true });
+    copyFileSync(file.from, file.to);
+    copied.push(file.to);
+  }
+  return copied;
+}
+
+async function optionalModules(n) {
+  step(n, "Optional modules");
+  console.log(
+    c.dim(
+      "  Not every site needs these, so the template ships without them.\n" +
+        "  Skip anything you are unsure about — `node scripts/setup.mjs\n" +
+        "  --modules-only` re-runs just this step later.",
+    ),
+  );
+
+  for (const mod of MODULES) {
+    // Re-read package.json per module: an earlier `pnpm add` rewrote it.
+    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+    console.log(`\n  ${c.b(mod.label)}`);
+    console.log(c.dim(`  ${mod.description}`));
+
+    if (moduleInstalled(mod, pkg)) {
+      console.log(c.green("  ✓ Already installed — nothing to do."));
+      continue;
+    }
+    if (!(await confirm(`  Add ${mod.id}?`))) {
+      console.log(c.dim("  Skipped — nothing added."));
+      continue;
+    }
+
+    const copied = installModule(mod);
+    console.log(
+      c.green(
+        `  ✓ ${mod.id} added${copied.length ? ` — read ${copied.join(", ")}` : ""}`,
+      ),
+    );
+  }
+}
+
 async function main() {
+  // A project that said no to a module at setup time can take just that step
+  // later, without touching the repo, Sanity or Vercel again.
+  if (process.argv.slice(2).includes("--modules-only")) {
+    console.log(c.b("\n🌱 Website boilerplate — optional modules\n"));
+    await optionalModules(1);
+    console.log();
+    rl?.close();
+    return;
+  }
+
   console.log(c.b("\n🌱 Website boilerplate — project setup\n"));
 
   // --- Naming ------------------------------------------------------------
@@ -261,8 +383,12 @@ async function main() {
     );
   }
 
+  // --- Optional modules --------------------------------------------------
+  // Before Vercel: whatever gets installed here belongs in the first deploy.
+  await optionalModules(7);
+
   // --- Vercel ------------------------------------------------------------
-  step(7, "Vercel");
+  step(8, "Vercel");
   if (!has("vercel")) {
     console.log(
       c.yellow(
@@ -310,11 +436,20 @@ async function main() {
     `  3. Apply token overrides in ${c.b("src/app/globals.css")}, then build\n`,
   );
 
-  rl.close();
+  rl?.close();
 }
 
-main().catch((err) => {
-  console.error(c.red("\nSetup failed:"), err.message);
-  rl.close();
-  process.exit(1);
-});
+// Only run the interview when this file is executed directly. Importing it — to
+// exercise the module table without prompting for a GitHub repo — must do
+// nothing.
+const executedDirectly =
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (executedDirectly) {
+  main().catch((err) => {
+    console.error(c.red("\nSetup failed:"), err.message);
+    rl?.close();
+    process.exit(1);
+  });
+}
