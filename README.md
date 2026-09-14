@@ -27,12 +27,12 @@ gives the new repo a fresh history and its own `origin`:
 gh repo create my-site --template reidotdev/BMT-214A --private --clone
 cd my-site
 pnpm install
-pnpm setup     # names the project, wires env, links Sanity + Vercel, first deploy
+pnpm scaffold  # names the project, wires env, links Sanity + Vercel, first deploy
 pnpm dev       # http://localhost:3000  (Studio at /studio)
 ```
 
 No `gh`? Use the green **“Use this template”** button on the repo page, then
-clone your new repo and run `pnpm install && pnpm setup`. (`pnpm setup` detects
+clone your new repo and run `pnpm install && pnpm scaffold`. (`pnpm scaffold` detects
 the existing `origin` and skips repo creation.)
 
 Then run the **design-discovery** skill to fill in `docs/design.md`, apply your
@@ -70,13 +70,39 @@ New modules are a data edit to `MODULES` in `scripts/setup.mjs` — see
 | `pnpm build-storybook`                         | Static Storybook into `storybook-static/`        |
 | `pnpm build` / `pnpm start`                    | Production build / serve                         |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format` | The checks CI runs                               |
+| `pnpm verify:template`                         | Assert the template invariants still hold        |
+| `pnpm test:e2e`                                | Playwright: keyboard focus + an axe pass         |
 | `pnpm typegen`                                 | Regenerate Sanity query types after schema edits |
-| `pnpm setup`                                   | Scaffold a new project end-to-end                |
+| `pnpm scaffold`                                | Scaffold a new project end-to-end                |
+| `node scripts/setup.mjs --modules-only`        | Re-run only the optional-modules step            |
+
+# …or by hand, which is all that step does:
+
+pnpm add three && pnpm add -D @types/three
+cp scripts/modules/three/3d.md docs/3d.md
+
+```
+
+New modules are a data edit to `MODULES` in `scripts/setup.mjs` — see
+`CLAUDE.md`.
+
+## Scripts
+
+| Command                                        | Does                                             |
+| ---------------------------------------------- | ------------------------------------------------ |
+| `pnpm dev`                                     | Local dev server                                 |
+| `pnpm storybook`                               | Component library on port 6006                   |
+| `pnpm build-storybook`                         | Static Storybook into `storybook-static/`        |
+| `pnpm build` / `pnpm start`                    | Production build / serve                         |
+| `pnpm lint` / `pnpm typecheck` / `pnpm format` | The checks CI runs                               |
+| `pnpm typegen`                                 | Regenerate Sanity query types after schema edits |
+| `pnpm scaffold`                                   | Scaffold a new project end-to-end                |
 | `node scripts/setup.mjs --modules-only`        | Re-run only the optional-modules step            |
 
 ## Environment
 
-Copy `.env.example` → `.env.local` (or let `pnpm setup` do it). The app builds
+Copy `.env.example` → `.env.local` (or let `pnpm scaffold` do it). The app builds
 without Sanity configured; data access is guarded by `sanityConfigured`.
 
 See `CLAUDE.md` for the full operating manual and conventions.
+```

@@ -16,7 +16,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typegen": "sanity schema extract && sanity typegen generate",
-    "setup": "node scripts/setup.mjs"
+    "scaffold": "node scripts/setup.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

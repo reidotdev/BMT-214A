@@ -3,7 +3,7 @@
 # Website Boilerplate — Operating Manual
 
 A starter for building websites on a fixed, opinionated stack. Clone it, run
-`pnpm setup`, do design discovery, then build. This file is the always-loaded
+`pnpm scaffold`, do design discovery, then build. This file is the always-loaded
 manual; deeper procedures live in `.claude/skills/`.
 
 ## Stack (fixed)
@@ -69,11 +69,11 @@ its own `origin`), then run setup:
 
 ```bash
 gh repo create my-site --template reidotdev/BMT-214A --private --clone
-cd my-site && pnpm install && pnpm setup
+cd my-site && pnpm install && pnpm scaffold
 ```
 
-(Or use the "Use this template" button, clone, then `pnpm install && pnpm setup`.
-`pnpm setup` detects the template's existing `origin` and skips repo creation.)
+(Or use the "Use this template" button, clone, then `pnpm install && pnpm scaffold`.
+`pnpm scaffold` detects the template's existing `origin` and skips repo creation.)
 
 ## Commands
 
@@ -86,7 +86,7 @@ cd my-site && pnpm install && pnpm setup
 - `pnpm verify:template` — assert the invariants below still hold
 - `pnpm test:e2e` — Playwright: keyboard focus + an axe pass (Chromium only)
 - `pnpm typegen` — regenerate Sanity query types after editing schemas
-- `pnpm setup` — scaffold a new project (naming, env, repo, Sanity, modules,
+- `pnpm scaffold` — scaffold a new project (naming, env, repo, Sanity, modules,
   Vercel)
 - `node scripts/setup.mjs --modules-only` — re-run just the optional-modules
   step on a project that is already set up
@@ -94,7 +94,7 @@ cd my-site && pnpm install && pnpm setup
 ## Optional modules
 
 Some capabilities are too heavy to hand every site, so the template ships
-**without** them and `pnpm setup` offers them once (step 7, defaulting to no).
+**without** them and `pnpm scaffold` offers them once (step 7, defaulting to no).
 Declining costs nothing: no dependency, no file, nothing to clean up later.
 
 | Module  | Adds                                          | The point                                                                                                                           |
@@ -175,7 +175,14 @@ typecheck` runs typegen first for exactly this reason — a bare `tsc
 6. **ESLint ignore patterns must be `**/`-prefixed.** Root-relative patterns
    miss build output in nested checkouts (`.claude/worktrees/*/.next`), and
    lint then walks tens of thousands of generated files.
-7. **Contrast is measured against the darkest surface, not white.**
+7. **`pnpm <name>` prefers pnpm's own command over your script.** Silently,
+   with no warning. This project's scaffolder was documented as `pnpm setup`
+   while `pnpm setup` actually ran pnpm's built-in command, which edits the
+   user's shell profile and scaffolds nothing — so the documented first-run
+   command never worked. It is `pnpm scaffold` now, and
+   `pnpm verify:template` fails if any script name collides with a pnpm
+   built-in. When in doubt, `pnpm run <name>` is always unambiguous.
+8. **Contrast is measured against the darkest surface, not white.**
    `--muted-foreground` renders on `--muted` and `--secondary` as well as on
    the page background. The default previously measured 4.45:1 on `--muted` —
    under the AA floor — while passing on white. Re-theme accordingly; the axe

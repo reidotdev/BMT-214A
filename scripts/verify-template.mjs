@@ -8,7 +8,7 @@
  * the time it happened: a focus ring that stops painting, a typecheck that
  * can't see Next's generated globals, an ESLint ignore that quietly stops
  * matching, a scaffolder that rewrites a file the app imports from. CI runs
- * this, and `pnpm setup` runs it last, so a bootstrap that clobbers the
+ * this, and `pnpm scaffold` runs it last, so a bootstrap that clobbers the
  * boilerplate is reported in the same session that caused it — not on the
  * first failed deploy.
  *
@@ -134,6 +134,68 @@ check("Sanity packages agree on a major version", () => {
       "styled-components is a direct dependency. Sanity Studio v6 does not " +
       "need it — its presence means something moved the Studio back to v5, " +
       "almost certainly a `sanity init` run in this directory."
+    );
+  }
+  return null;
+});
+
+check("no package script is shadowed by a pnpm built-in", () => {
+  // `pnpm <name>` prefers pnpm's OWN command over a script of the same name,
+  // silently. `pnpm setup` was documented as this project's scaffolder for
+  // months while actually running pnpm's built-in setup, which edits the
+  // user's shell profile and never scaffolds anything. Only `pnpm run <name>`
+  // is unambiguous — so keep script names off this list entirely.
+  //
+  // `start` and `test` are deliberately absent: pnpm's versions of those DO
+  // run the matching script.
+  const reserved = new Set([
+    "access",
+    "add",
+    "audit",
+    "bin",
+    "config",
+    "create",
+    "dedupe",
+    "deploy",
+    "dlx",
+    "doctor",
+    "env",
+    "exec",
+    "fetch",
+    "help",
+    "import",
+    "init",
+    "install",
+    "licenses",
+    "link",
+    "list",
+    "ln",
+    "outdated",
+    "pack",
+    "patch",
+    "prune",
+    "publish",
+    "rebuild",
+    "recursive",
+    "remove",
+    "root",
+    "run",
+    "server",
+    "setup",
+    "store",
+    "unlink",
+    "update",
+    "why",
+  ]);
+
+  const shadowed = Object.keys(pkg.scripts ?? {}).filter((name) =>
+    reserved.has(name),
+  );
+  if (shadowed.length) {
+    return (
+      `package.json script(s) shadowed by a pnpm built-in: ${shadowed.join(", ")}. ` +
+      `\`pnpm ${shadowed[0]}\` will run pnpm's own command, not this script, ` +
+      "with no warning. Rename the script (e.g. `setup` -> `scaffold`)."
     );
   }
   return null;

@@ -2,7 +2,7 @@
 /**
  * Per-project setup for a site cloned from this boilerplate.
  *
- *   pnpm setup
+ *   pnpm scaffold
  *
  * Walks through: naming the project, wiring env, GitHub (pushes to the existing
  * origin when generated from the template, else creates a PRIVATE repo),
