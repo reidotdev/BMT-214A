@@ -3,85 +3,180 @@
 @plugin "tailwindcss-react-aria-components";
 
 /* ---------------------------------------------------------------------------
-   DESIGN TOKENS — the swappable layer.
-   CSS variables are the single source of truth. Edit values here to re-theme
-   the whole site. `@theme inline` maps them onto Tailwind utilities so
-   `bg-background`, `text-primary`, `rounded-lg`, etc. all read these vars.
+   DESIGN TOKENS — the swappable layer, and the project's source of truth.
 
-   Three-layer model (see CLAUDE.md):
-   1. Tokens (these variables)          → systematic, site-wide swaps
-   2. Tailwind theme (the @theme block) → utilities resolve to the tokens
-   3. Custom overrides (scoped vars /   → per-project bespoke visuals
-      raw CSS / arbitrary utilities)
+   Two layers, so a re-theme touches ONE block:
+
+   1. PALETTE  — raw named values. The only place a colour literal appears.
+   2. SEMANTIC — role tokens (`--background`, `--primary`, …) pointing at the
+                 palette. Components only ever reference these.
+
+   Then `@theme inline` maps the semantic layer onto Tailwind utilities, so
+   `bg-background`, `text-primary`, `rounded-lg` resolve to the tokens.
+
+   Re-theming a project means editing the PALETTE block and nothing else.
+
+   THREE THINGS TO KNOW BEFORE EDITING
+   -----------------------------------
+   1. If you point a palette value at one of Tailwind's own colour variables
+      (`var(--color-slate-900)` instead of an oklch literal), you MUST change
+      the first line to `@import "tailwindcss" theme(static)`. Tailwind v4
+      tree-shakes theme variables that no utility references, so the var() is
+      dropped and EVERY COLOUR ON THE SITE silently resolves to nothing — with
+      no error, in dev and in prod alike. `theme(static)` emits them all;
+      measured cost is about +6.7 KB gzipped, which you get back by inlining
+      literals once the palette settles.
+   2. Dark is TWO mechanisms. `[data-theme="dark"]` (plus the OS preference) is
+      a whole-page theme. `data-surface="dark"` is a SECTION scope — see below.
+   3. Never hardcode a colour in a component. If a value is genuinely one-off,
+      it belongs in a scoped class or an arbitrary utility, not in this file.
 --------------------------------------------------------------------------- */
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.16 0 0);
+  /* --- 1. PALETTE ------------------------------------------------------- */
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.16 0 0);
+  /* Light ground */
+  --paper: oklch(1 0 0);
+  --ink: oklch(0.16 0 0);
+  /* 0.52, not 0.55. As --muted-foreground this sits on --muted and
+     --secondary as well as on white, and at 0.55 it measures 4.45:1 on
+     --muted — under the 4.5:1 AA floor, which is what the unselected tabs in
+     Tabs render as. 0.52 clears every light surface (worst case 4.90:1).
+     Re-theme this value against the DARKEST light surface, not white. */
+  --ink-muted: oklch(0.52 0 0);
+  --line: oklch(0.92 0 0);
+  --surface: oklch(0.96 0 0);
+  --surface-strong: oklch(0.97 0 0);
 
-  --primary: oklch(0.55 0.22 264);
-  --primary-foreground: oklch(0.99 0 0);
+  /* Dark ground — used by the page theme AND by dark sections */
+  --dark: oklch(0.16 0 0);
+  --dark-raised: oklch(0.2 0 0);
+  --dark-surface: oklch(0.26 0 0);
+  --dark-muted: oklch(0.24 0 0);
+  --dark-accent: oklch(0.28 0 0);
+  --dark-line: oklch(0.28 0 0);
+  --dark-input: oklch(0.3 0 0);
+  --on-dark: oklch(0.98 0 0);
+  --on-dark-muted: oklch(0.68 0 0);
 
-  --secondary: oklch(0.96 0 0);
-  --secondary-foreground: oklch(0.2 0 0);
+  /* Brand */
+  --brand: oklch(0.55 0.22 264);
+  --brand-on: oklch(0.99 0 0);
+  --brand-light: oklch(0.7 0.16 264);
 
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.55 0 0);
-
-  --accent: oklch(0.96 0 0);
-  --accent-foreground: oklch(0.2 0 0);
-
-  --destructive: oklch(0.58 0.24 27);
-  --destructive-foreground: oklch(0.99 0 0);
-
-  --border: oklch(0.92 0 0);
-  --input: oklch(0.92 0 0);
-  --ring: oklch(0.55 0.22 264);
+  /* Status */
+  --danger: oklch(0.58 0.24 27);
+  --on-danger: oklch(0.99 0 0);
 
   --radius: 0.625rem;
 }
 
-/* Dark theme. Applies via OS preference OR an explicit [data-theme="dark"]
-   on <html> (the explicit attribute always wins — see layout.tsx). */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --background: oklch(0.16 0 0);
-    --foreground: oklch(0.98 0 0);
-    --card: oklch(0.2 0 0);
-    --card-foreground: oklch(0.98 0 0);
-    --primary: oklch(0.7 0.16 264);
-    --primary-foreground: oklch(0.16 0 0);
-    --secondary: oklch(0.26 0 0);
-    --secondary-foreground: oklch(0.98 0 0);
-    --muted: oklch(0.24 0 0);
-    --muted-foreground: oklch(0.68 0 0);
-    --accent: oklch(0.28 0 0);
-    --accent-foreground: oklch(0.98 0 0);
-    --border: oklch(0.28 0 0);
-    --input: oklch(0.3 0 0);
-    --ring: oklch(0.7 0.16 264);
-  }
+/* --- 2. SEMANTIC — light ---------------------------------------------------
+   `[data-surface="light"]` is here too, so a light island inside a dark page
+   theme works the same way a dark section does inside a light page. */
+:root,
+[data-surface="light"] {
+  --background: var(--paper);
+  --foreground: var(--ink);
+
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-on);
+
+  --secondary: var(--surface);
+  --secondary-foreground: oklch(0.2 0 0);
+
+  --muted: var(--surface-strong);
+  --muted-foreground: var(--ink-muted);
+
+  --accent: var(--surface);
+  --accent-foreground: oklch(0.2 0 0);
+
+  --destructive: var(--danger);
+  --destructive-foreground: var(--on-danger);
+
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--brand);
 }
 
-:root[data-theme="dark"] {
-  --background: oklch(0.16 0 0);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.2 0 0);
-  --card-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.7 0.16 264);
-  --primary-foreground: oklch(0.16 0 0);
-  --secondary: oklch(0.26 0 0);
-  --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.24 0 0);
-  --muted-foreground: oklch(0.68 0 0);
-  --accent: oklch(0.28 0 0);
-  --accent-foreground: oklch(0.98 0 0);
-  --border: oklch(0.28 0 0);
-  --input: oklch(0.3 0 0);
-  --ring: oklch(0.7 0.16 264);
+/* --- 2. SEMANTIC — dark ----------------------------------------------------
+   One mapping, two entry points:
+
+   `:root[data-theme="dark"]`  — whole-page dark theme (explicit attribute on
+                                 <html>; always wins over the OS preference).
+   `[data-surface="dark"]`     — a SECTION scope. Put it on any element and
+                                 every token flips inside it, so Button,
+                                 TextField and the rest render correctly on a
+                                 dark band with no variant props and no
+                                 hardcoded colours:
+
+                                     <section data-surface="dark"> … </section>
+
+   The section scope is what full-bleed dark bands on an otherwise light page
+   should use. Reach for the page theme only when the whole site is dark. */
+:root[data-theme="dark"],
+[data-surface="dark"] {
+  --background: var(--dark);
+  --foreground: var(--on-dark);
+
+  --card: var(--dark-raised);
+  --card-foreground: var(--on-dark);
+
+  --primary: var(--brand-light);
+  --primary-foreground: var(--dark);
+
+  --secondary: var(--dark-surface);
+  --secondary-foreground: var(--on-dark);
+
+  --muted: var(--dark-muted);
+  --muted-foreground: var(--on-dark-muted);
+
+  --accent: var(--dark-accent);
+  --accent-foreground: var(--on-dark);
+
+  --border: var(--dark-line);
+  --input: var(--dark-input);
+  --ring: var(--brand-light);
+}
+
+/* A dark section paints its own ground; the page theme paints it on <body>. */
+[data-surface="dark"],
+[data-surface="light"] {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* Dark theme via OS preference. The explicit [data-theme] attribute on <html>
+   always wins — see layout.tsx. Delete this block for a site that is light by
+   design; the [data-theme="dark"] plumbing above stays either way, so a dark
+   variant can be added later without re-architecting. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: var(--dark);
+    --foreground: var(--on-dark);
+
+    --card: var(--dark-raised);
+    --card-foreground: var(--on-dark);
+
+    --primary: var(--brand-light);
+    --primary-foreground: var(--dark);
+
+    --secondary: var(--dark-surface);
+    --secondary-foreground: var(--on-dark);
+
+    --muted: var(--dark-muted);
+    --muted-foreground: var(--on-dark-muted);
+
+    --accent: var(--dark-accent);
+    --accent-foreground: var(--on-dark);
+
+    --border: var(--dark-line);
+    --input: var(--dark-input);
+    --ring: var(--brand-light);
+  }
 }
 
 @theme inline {

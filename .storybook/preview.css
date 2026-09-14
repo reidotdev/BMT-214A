@@ -1,0 +1,21 @@
+/* Storybook preview stylesheet.
+
+   The app's real stylesheet — the palette, the semantic tokens, Tailwind v4,
+   the RAC plugin and the `[data-surface="dark"]` block — is imported wholesale
+   so a story cannot drift from production. Nothing is redefined here; only
+   Storybook's own chrome is fixed up. */
+
+@import "../src/app/globals.css";
+
+/* The story iframe's <body> is the canvas. globals.css already paints it with
+   the semantic tokens; this only stops Storybook's default padding from
+   fighting the per-story layout. */
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Same reason, for the wrapper Storybook puts around the story root. */
+.sb-show-main {
+  padding: 0 !important;
+}
