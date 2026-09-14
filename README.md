@@ -6,6 +6,9 @@ An opinionated starter for building websites on a fixed stack:
 
 - Accessible components from React Aria, pre-styled with a swappable design-token
   system (CSS variables → Tailwind `@theme`).
+- A Storybook of that component set (`pnpm storybook`) — every variant and
+  interaction state, on a light or dark surface, rendered against the app's own
+  stylesheet. See `docs/storybook.md`.
 - Embedded Sanity Studio at `/studio` with live content.
 - Scroll-triggered motion via GSAP (`@gsap/react`).
 - SEO out of the box (metadata, sitemap, robots, dynamic OG image). No analytics
@@ -38,6 +41,8 @@ token overrides in `src/app/globals.css`, and build.
 | Command                                        | Does                                             |
 | ---------------------------------------------- | ------------------------------------------------ |
 | `pnpm dev`                                     | Local dev server                                 |
+| `pnpm storybook`                               | Component library on port 6006                   |
+| `pnpm build-storybook`                         | Static Storybook into `storybook-static/`        |
 | `pnpm build` / `pnpm start`                    | Production build / serve                         |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format` | The checks CI runs                               |
 | `pnpm typegen`                                 | Regenerate Sanity query types after schema edits |
