@@ -54,6 +54,70 @@ check("sanity/env.ts still exports its guards", () => {
   return null;
 });
 
+check("sanity/env.ts refuses a malformed project id", () => {
+  const env = read("src/sanity/env.ts");
+  // The value that reaches a deployed build is not the value you typed. It has
+  // been through a .env file, `vercel env add` and a dashboard, any of which can
+  // hand it back wrapped in quotes or carrying a stray \r. `createClient()` runs
+  // at module load in a file the root layout imports, so one bad character there
+  // takes down every route — including the ones that never touch Sanity.
+  if (!/a-z0-9-/.test(env)) {
+    return (
+      "src/sanity/env.ts no longer validates NEXT_PUBLIC_SANITY_PROJECT_ID " +
+      "against Sanity's own rule (a-z, 0-9, dashes). Without it a quoted or " +
+      'padded value reaches createClient() and the build dies with "`projectId` ' +
+      'can only contain only a-z, 0-9 and dashes" — which is how the first ' +
+      "production deploy of a scaffolded site failed."
+    );
+  }
+  if (!/\.trim\(\)/.test(env) || !/\['"\]/.test(env)) {
+    return (
+      "src/sanity/env.ts no longer strips surrounding quotes and whitespace " +
+      'from its env values. Sanity\'s own `init --env` writes KEY="value" with ' +
+      "the quotes included, and they travel to the host verbatim."
+    );
+  }
+  return null;
+});
+
+check("any .env.local present holds usable Sanity values", () => {
+  // Only meaningful on a developer machine — .env.local is gitignored, so in CI
+  // there is nothing to check and nothing to complain about.
+  if (!existsSync(".env.local")) return null;
+
+  const vars = new Map();
+  for (const line of read(".env.local").split("\n")) {
+    const match = line
+      .trim()
+      .match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([\s\S]*)$/);
+    if (!match || line.trim().startsWith("#")) continue;
+    // Last assignment wins, the way a runtime reads it.
+    vars.set(match[1], match[2].trim());
+  }
+
+  const problems = [];
+  const rules = [
+    ["NEXT_PUBLIC_SANITY_PROJECT_ID", /^[a-z0-9-]+$/, "a-z, 0-9 and dashes"],
+    [
+      "NEXT_PUBLIC_SANITY_DATASET",
+      /^[a-z0-9_-]+$/,
+      "a-z, 0-9, underscores and dashes",
+    ],
+  ];
+  for (const [key, rule, allowed] of rules) {
+    const value = vars.get(key);
+    if (!value) continue; // absent is fine: the app builds unconfigured
+    if (!rule.test(value)) {
+      problems.push(
+        `${key}=${value} — only ${allowed} are allowed. Quotes around the value ` +
+          "are the usual cause; they survive a push to the host and break the build there.",
+      );
+    }
+  }
+  if (problems.length) return problems.join("\n  ");
+  return null;
+});
+
 check("focus ring restores outline-style on focus", () => {
   const styles = read("src/components/ui/styles.ts");
   // Match the exported value, not the file — the explanatory comment above
