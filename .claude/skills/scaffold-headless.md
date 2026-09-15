@@ -25,7 +25,8 @@ Verified in a cloud session — check rather than assume, environments differ:
 | Template invariants              | yes                  | local script                                             |
 | Create the GitHub repo           | yes, **via the API** | the `gh` CLI is usually absent; the GitHub tools are not |
 | First commit and push            | yes                  | git works                                                |
-| Sanity project                   | **no**               | needs the `sanity` CLI, logged in                        |
+| Sanity project (new)             | **no**               | needs the `sanity` CLI, logged in                        |
+| Sanity project (existing id)     | **yes**              | writes `.env.local`; no CLI involved                     |
 | Vercel link and deploy           | **no**               | needs the `vercel` CLI, logged in                        |
 
 Sanity and Vercel are the honest limits. Do not pretend otherwise, and do not
@@ -68,6 +69,12 @@ Three answers matter per remote step:
 
 Use `"later"`, not `false`, for Sanity and Vercel in a phone session. `false`
 silently drops them and the user never learns what is missing.
+
+**Sanity is the one remote step a phone session can finish.** If the user
+already has a Sanity project — ask — set `"mode": "existing"` and put the id in
+`"projectId"`. That path needs no CLI at all: the scaffolder just writes
+`.env.local`. Only creating a _new_ project needs the `sanity` CLI, so that is
+the case for `"later"`.
 
 **Never put a token, key or secret in this file.** It is committed. Credentials
 belong in `.env.local`, which is gitignored.

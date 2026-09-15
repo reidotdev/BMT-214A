@@ -58,6 +58,7 @@ src/
   stories/        # one *.stories.tsx per ui component + Foundations/tokens
 .storybook/       # Storybook config; preview.css imports the app's globals.css
 docs/design.md    # per-project design decisions (source of truth for the build)
+docs/deploy.md    # Vercel settings, env vars, and what a red first deploy means
 docs/storybook.md # running, writing and deploying the component library
 scripts/setup.mjs # one-command project setup (GitHub + Sanity + Vercel + deploy)
 ```
@@ -87,7 +88,8 @@ cd my-site && pnpm install && pnpm scaffold
 - `pnpm test:e2e` — Playwright: keyboard focus + an axe pass (Chromium only)
 - `pnpm typegen` — regenerate Sanity query types after editing schemas
 - `pnpm scaffold` — scaffold a new project (naming, env, repo, Sanity, modules,
-  Vercel)
+  Vercel). Nothing in the repo is overwritten; the only file the Sanity step
+  writes is `.env.local`. Deploy questions are answered in `docs/deploy.md`.
 - `node scripts/setup.mjs --modules-only` — re-run just the optional-modules
 - `node scripts/setup.mjs --config scaffold.config.json --non-interactive` —
   scaffold with no interview, for a phone / web session / CI. See
@@ -165,15 +167,27 @@ typecheck` runs typegen first for exactly this reason — a bare `tsc
    resolves to nothing — every colour on the site, silently. Use
    `@import "tailwindcss" theme(static)` while the palette is unsettled, then
    inline literals and drop it. Details in `src/app/globals.css`.
-4. **`sanity init` rewrites files it does not own.** It replaces
-   `src/sanity/env.ts` with a version that has no `sanityConfigured` export —
-   which `layout.tsx` imports, so the next build dies with
-   `Export sanityConfigured doesn't exist in target module` — reverts
+4. **Never run `sanity init` in this repo.** Its bootstrap rewrites files it
+   does not own: it replaces `src/sanity/env.ts` with a version that has no
+   `sanityConfigured` export — which `layout.tsx` imports, so the next build
+   dies with `Export sanityConfigured doesn't exist in target module` — reverts
    `sanity.config.ts` / `sanity.cli.ts`, drops starter schema types in, and
    rewrites `package.json` (observed: a whole-major Sanity downgrade, which
-   then pulled in `styled-components`). `scripts/setup.mjs` snapshots and
-   restores those paths around the call; if you run `sanity init` by hand,
-   `git diff` before committing.
+   then pulled in `styled-components`). It asks before each one, but the
+   question is "File /src/sanity/env.ts already exists. Do you want to
+   overwrite it?" and there is no answer that leaves you better off.
+   `pnpm scaffold` no longer calls it — it uses `sanity projects create` /
+   `projects list`, which resolve a project id and touch nothing on disk. To
+   connect Sanity by hand, do the same:
+
+   ```bash
+   pnpm exec sanity projects create "My Site" --dataset production --yes --json
+   # then put the id in .env.local yourself — unquoted, see gotcha 9
+   ```
+
+   If you ran `init` anyway, `git diff` before committing and let
+   `pnpm verify:template` tell you what it took.
+
 5. **`sanityFetch` cannot run in `generateStaticParams`.** It reads
    `draftMode()`, a request-scoped API, and `generateStaticParams` runs at
    build time with no request. Use the plain `client` there instead.
@@ -192,6 +206,32 @@ typecheck` runs typegen first for exactly this reason — a bare `tsc
    the page background. The default previously measured 4.45:1 on `--muted` —
    under the AA floor — while passing on white. Re-theme accordingly; the axe
    test catches it.
+9. **Quotes in a `.env` file are a file-format convention, not part of the
+   value.** `dotenv` strips them when Next.js loads `.env.local`, so a value
+   stored as `KEY="abc123"` reads back as `abc123` locally and everything looks
+   right. `vercel env add` does no such thing: it stores the bytes it is given,
+   quotes included, and `process.env.KEY` on the deployed build is `"abc123"` —
+   a different string. This killed the first production deploy of a scaffolded
+   site with ``projectId` can only contain only a-z, 0-9 and dashes``, having
+   passed every local check. Sanity's own `init --env` writes `KEY="value"`,
+   which is how the quotes got there. Three guards now exist: the scaffolder
+   writes `.env.local` itself and pushes values unquoted, `src/sanity/env.ts`
+   strips quotes and validates before use (degrading to "not configured" with a
+   warning rather than throwing), and `pnpm verify:template` rejects a malformed
+   `.env.local`. Keep all three.
+10. **Vercel's "Customize settings?" is a trap on first deploy.** Answering yes
+    and pressing enter on a field overrides the framework preset with an empty
+    string — an empty Build Command runs nothing. The answer is always no;
+    `pnpm scaffold` passes `--yes` so it is never asked. `docs/deploy.md` has
+    the settings table and how to undo an override.
+11. **ESLint stays on 9.x.** npm reports `eslint@9.39.5` as "no longer
+    supported" on every install, which reads like something to fix. It is not
+    fixable here: `eslint-config-next@16` declares `eslint >= 9` but bundles
+    `eslint-plugin-react` / `eslint-plugin-jsx-a11y`, which cap at 9 and crash
+    on 10 with `contextOrFilename.getFilename is not a function` the moment
+    `pnpm lint` touches a React file. Revisit when `eslint-config-next` ships
+    ESLint 10 support. `tsconfck`, `uuid@10` and `whatwg-encoding` are likewise
+    transitive (Storybook and Sanity) and not ours to move.
 
 ## Conventions
 

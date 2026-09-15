@@ -37,16 +37,35 @@
   "github": { "push": true, "create": "later" },
 
   "$comment_sanity": [
-    "Needs the sanity CLI, logged in. Unavailable in a cloud/web session, so",
-    "leave false there — the run will list the exact command to finish later.",
-    "The scaffolder protects the boilerplate's Sanity files from being",
-    "overwritten by init either way; see the Sanity step in scripts/setup.mjs."
+    "mode: \"create\" makes a new Sanity project, \"existing\" uses the projectId",
+    "below, \"later\" defers with the command printed at the end, false skips.",
+    "\"create\" and a login check need the sanity CLI, which a cloud/web session",
+    "does not have — but \"existing\" plus a projectId needs NO CLI at all, so a",
+    "phone session that already knows the project id can finish this step.",
+    "",
+    "organization is only needed when the account belongs to more than one; the",
+    "run fails with a message naming the flag if so.",
+    "",
+    "token: true mints a viewer-role read token and writes it to .env.local",
+    "(never here). Only needed for drafts and live preview."
   ],
-  "sanity": { "init": "later" },
+  "sanity": {
+    "mode": "later",
+    "projectId": "",
+    "dataset": "production",
+    "organization": "",
+    "token": false
+  },
 
   "$comment_vercel": [
     "Needs the vercel CLI, logged in. Same story as Sanity.",
-    "link pushes NEXT_PUBLIC_* and Sanity vars from .env.local to the project."
+    "link runs `vercel link --yes`, which takes the detected Next.js build",
+    "settings rather than asking — see docs/deploy.md for what those are — then",
+    "pushes every non-empty value from .env.local to the project. A localhost",
+    "NEXT_PUBLIC_SITE_URL is pushed to development only.",
+    "",
+    "scope is the team slug, when the project does not belong to your personal",
+    "account. Leave it out for personal."
   ],
-  "vercel": { "link": "later", "deploy": false }
+  "vercel": { "link": "later", "deploy": false, "scope": "" }
 }
