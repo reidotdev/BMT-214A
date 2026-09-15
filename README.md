@@ -81,7 +81,7 @@ New modules are a data edit to `MODULES` in `scripts/setup.mjs` — see
 pnpm add three && pnpm add -D @types/three
 cp scripts/modules/three/3d.md docs/3d.md
 
-```
+````
 
 New modules are a data edit to `MODULES` in `scripts/setup.mjs` — see
 `CLAUDE.md`.
@@ -99,10 +99,37 @@ New modules are a data edit to `MODULES` in `scripts/setup.mjs` — see
 | `pnpm scaffold`                                   | Scaffold a new project end-to-end                |
 | `node scripts/setup.mjs --modules-only`        | Re-run only the optional-modules step            |
 
+## Starting a project without a terminal
+
+`pnpm scaffold` is an interview, which is no use from a phone. Every answer can
+come from a file instead:
+
+```bash
+cp scaffold.config.example.json scaffold.config.json
+# edit it, then:
+node scripts/setup.mjs --config scaffold.config.json --non-interactive
+````
+
+It never reads stdin, so it cannot hang waiting for input. Each remote step
+takes three answers: `true` (do it now), `false` (don't want it), or `"later"`
+— wanted, but this environment lacks the CLI, so the run prints the exact
+command in its closing to-do list.
+
+Sanity and Vercel need their CLIs logged in, which a cloud or web session does
+not have; mark those `"later"` and finish them at a desk. Creating the GitHub
+repo works either way — over the API when `gh` is missing.
+
+Ask Claude to do the whole thing for you and it will follow the
+`scaffold-headless` skill: a short interview in chat, then the repo, the config,
+the run, and the list of what is left.
+
 ## Environment
 
 Copy `.env.example` → `.env.local` (or let `pnpm scaffold` do it). The app builds
 without Sanity configured; data access is guarded by `sanityConfigured`.
 
 See `CLAUDE.md` for the full operating manual and conventions.
+
+```
+
 ```

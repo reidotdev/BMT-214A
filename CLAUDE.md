@@ -89,6 +89,9 @@ cd my-site && pnpm install && pnpm scaffold
 - `pnpm scaffold` — scaffold a new project (naming, env, repo, Sanity, modules,
   Vercel)
 - `node scripts/setup.mjs --modules-only` — re-run just the optional-modules
+- `node scripts/setup.mjs --config scaffold.config.json --non-interactive` —
+  scaffold with no interview, for a phone / web session / CI. See
+  `scaffold.config.example.json` and the `scaffold-headless` skill.
   step on a project that is already set up
 
 ## Optional modules
@@ -127,6 +130,8 @@ so a project that declines carries none of it.
   land its story alongside it.
 - **technical-plan** — plan a large feature in `docs/`, then annotate it with
   what the build actually found.
+- **scaffold-headless** — start a new project from chat when there is no
+  terminal to answer prompts in (phone, web session, CI).
 
 ## SEO & analytics
 
