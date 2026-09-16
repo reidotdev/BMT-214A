@@ -89,7 +89,12 @@ cd my-site && pnpm install && pnpm scaffold
 - `pnpm typegen` — regenerate Sanity query types after editing schemas
 - `pnpm scaffold` — scaffold a new project (naming, env, repo, Sanity, modules,
   Vercel). Nothing in the repo is overwritten; the only file the Sanity step
-  writes is `.env.local`. Deploy questions are answered in `docs/deploy.md`.
+  writes is `.env.local`. Creating a Sanity project also allows the site's CORS
+  origins on it (`http://localhost:3000` and the production URL, with
+  credentials); linking an existing project asks first. No remote step can end
+  the run any more — a push, a `gh repo create` or a `vercel link` that fails is
+  reported, deferred to the closing to-do list, and the remaining steps carry
+  on. Deploy questions are answered in `docs/deploy.md`.
 - `node scripts/setup.mjs --modules-only` — re-run just the optional-modules
 - `node scripts/setup.mjs --config scaffold.config.json --non-interactive` —
   scaffold with no interview, for a phone / web session / CI. See
@@ -232,6 +237,38 @@ typecheck` runs typegen first for exactly this reason — a bare `tsc
     `pnpm lint` touches a React file. Revisit when `eslint-config-next` ships
     ESLint 10 support. `tsconfck`, `uuid@10` and `whatwg-encoding` are likewise
     transitive (Storybook and Sanity) and not ours to move.
+12. **A new Sanity project allows no browser origins.** Env vars tell the site
+    how to reach Sanity; CORS origins tell Sanity which browsers may reach it
+    back, and a freshly created project's list is empty. Nothing fails loudly:
+    the build is green, `pnpm dev` starts, the deploy succeeds — and only the
+    browser console says that the current origin "is not in the list of allowed
+    CORS origins for this Sanity Project", while `/studio` goes round in a
+    circle instead of logging in. `pnpm scaffold` now adds
+    `http://localhost:3000` and the production URL when it creates a project,
+    and asks first before touching an existing project's policy. The flag is
+    `--project-id`; `--project` is rejected outright by the CLI this template
+    depends on. `--credentials` is the whole point: without it an origin may
+    read published content and nothing else — no Studio session, no drafts, no
+    live preview. Never allow a **wildcard** origin _with_ credentials
+    (`https://*.vercel.app`): that lets any page on that domain make
+    authenticated requests to the project. Preview deploys get random URLs, so
+    they show published content only. `docs/deploy.md` has the full table.
+13. **A scaffold run in the wrong directory looked like a git bug.** A leftover
+    project folder meant `gh repo create --clone` refused to clone, so the
+    scaffolder got run inside the old checkout — whose history had nothing to do
+    with the `origin` it now pointed at. Step 4's push was rejected as a
+    non-fast-forward, `execSync` threw, and the whole run died on the spot with
+    "Setup failed: Command failed: git push -u origin main". Steps 5 through 8
+    — Sanity, the invariants, the modules, Vercel — never ran, and nothing said
+    so. Two guards now: the push step fetches first and asks git whether the two
+    histories have a common ancestor at all, refusing to push (and saying you
+    are probably in the wrong directory) when they do not, or when the remote is
+    ahead; and every remote command — the push, `gh repo create`,
+    `vercel link`, `vercel --prod` — is wrapped so that a failure is reported
+    and deferred to the closing to-do list instead of ending the run. A second
+    tell for the same mistake, now printed: a `.env.local` that already exists
+    in what should be a fresh template clone means the folder has been
+    scaffolded before.
 
 ## Conventions
 

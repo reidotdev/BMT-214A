@@ -70,6 +70,74 @@ printf 'https://example.com' | vercel env add NEXT_PUBLIC_SITE_URL production
 Nothing here is required to build. That is deliberate — see golden rule 6 in
 `CLAUDE.md`.
 
+## CORS origins — the other list Sanity keeps
+
+Environment variables tell **this site** how to reach Sanity. CORS origins tell
+**Sanity** which browsers are allowed to reach it back. They are separate lists,
+kept in different places, and getting the first one right tells you nothing about
+the second.
+
+A new Sanity project allows no origins at all. Until one is added, the build is
+green, `pnpm dev` starts, the deploy succeeds — and the browser console says:
+
+```
+Sanity Live is unable to connect to the Sanity API as the current origin -
+http://localhost:3000 - is not in the list of allowed CORS origins for this
+Sanity Project.
+```
+
+while `/studio` never finishes logging in. `pnpm scaffold` adds the two origins
+it knows about (the dev server, and the production URL you gave it) when it
+creates the project. Everything else is on you:
+
+```bash
+pnpm exec sanity cors add https://example.com --credentials
+pnpm exec sanity cors list
+```
+
+### Why `--credentials`
+
+An origin allowed **without** credentials can read published content and nothing
+else. The browser is not permitted to send the session cookie or an
+`Authorization` header with the request, so:
+
+- the embedded Studio at `/studio` cannot authenticate — login goes round in a
+  circle,
+- `SanityLive` cannot stream drafts,
+- anything behind the read token stays invisible.
+
+So every origin that serves the Studio or previews drafts needs
+`--credentials`. An origin that only serves published content does not, and is
+safer without it.
+
+### Wildcards, and why not to reach for one
+
+`sanity cors add` accepts a wildcard — `https://*.vercel.app` — and it is exactly
+the wrong tool for a preview deploy:
+
+> **A wildcard origin allowed with credentials lets any page on that domain make
+> authenticated requests to your project.** `https://*.vercel.app` means every
+> Vercel deployment in the world, belonging to anyone, can ask your project for
+> drafts using a visitor's session. Sanity makes you confirm this (`--yes`); the
+> scaffolder never adds one.
+
+Vercel preview deployments get a fresh random URL per commit, so they will not be
+on the allow-list and **previews show published content only**. That is the
+right default. If you genuinely need drafts in previews, either add each preview
+URL by hand while you need it, or add a wildcard _without_ `--credentials` and
+accept that drafts stay out of them.
+
+The domains worth adding once and keeping:
+
+| Origin                         | Credentials | Why                                        |
+| ------------------------------ | ----------- | ------------------------------------------ |
+| `http://localhost:3000`        | yes         | local dev + the Studio at `/studio`        |
+| `https://your-domain.com`      | yes         | the production Studio and live preview     |
+| `https://your-site.vercel.app` | yes         | the stable production alias, if you use it |
+
+Remove one with `pnpm exec sanity cors delete <origin>`, and check the whole list
+in the dashboard under **Project → API → CORS origins**.
+
 ## When the first production deploy fails
 
 Read the build log from the top; the first error is the real one.
@@ -100,6 +168,11 @@ the only known cause. `git checkout src/sanity/env.ts`, then read gotcha 4 in
 **The build passes but every page is empty** — `sanityConfigured` is false.
 Either the project id is absent from that environment, or it was rejected; the
 build log says which.
+
+**The deploy is green but `/studio` will not log in** — nothing is wrong with
+the deploy. The deployed origin is not on the project's CORS list, or it is on
+it without credentials. See the section above; `pnpm exec sanity cors list` is
+the fastest answer.
 
 ## Catching all of this before you deploy
 

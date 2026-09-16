@@ -47,14 +47,23 @@
     "run fails with a message naming the flag if so.",
     "",
     "token: true mints a viewer-role read token and writes it to .env.local",
-    "(never here). Only needed for drafts and live preview."
+    "(never here). Only needed for drafts and live preview.",
+    "",
+    "cors: a new Sanity project allows no browser origins at all, so /studio",
+    "cannot log in and SanityLive cannot connect until http://localhost:3000",
+    "and the production URL are allowed WITH credentials. \"create\" does this",
+    "for the project it just made unless you set cors to false. Linking an",
+    "existing project only touches its CORS policy when cors is true — someone",
+    "else's allow-list may be deliberate. Needs the sanity CLI, so \"later\"",
+    "defers it with the exact commands."
   ],
   "sanity": {
     "mode": "later",
     "projectId": "",
     "dataset": "production",
     "organization": "",
-    "token": false
+    "token": false,
+    "cors": true
   },
 
   "$comment_vercel": [
