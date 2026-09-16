@@ -27,6 +27,7 @@ Verified in a cloud session — check rather than assume, environments differ:
 | First commit and push            | yes                  | git works                                                |
 | Sanity project (new)             | **no**               | needs the `sanity` CLI, logged in                        |
 | Sanity project (existing id)     | **yes**              | writes `.env.local`; no CLI involved                     |
+| Sanity CORS origins              | **no**               | needs the `sanity` CLI, logged in                        |
 | Vercel link and deploy           | **no**               | needs the `vercel` CLI, logged in                        |
 
 Sanity and Vercel are the honest limits. Do not pretend otherwise, and do not
@@ -75,6 +76,11 @@ already has a Sanity project — ask — set `"mode": "existing"` and put the id
 `"projectId"`. That path needs no CLI at all: the scaffolder just writes
 `.env.local`. Only creating a _new_ project needs the `sanity` CLI, so that is
 the case for `"later"`.
+
+What that path still cannot do is allow the site's CORS origins on the project,
+which needs the CLI. Set `"cors": "later"` so the commands land in the to-do
+list, and tell the user plainly: until they run them, `/studio` cannot log in
+and live preview cannot connect, however green the build is.
 
 **Never put a token, key or secret in this file.** It is committed. Credentials
 belong in `.env.local`, which is gitignored.

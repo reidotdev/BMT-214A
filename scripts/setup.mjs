@@ -142,14 +142,38 @@ const run = (cmd) => {
 const step = (n, title) => console.log(`\n${c.b(`[${n}] ${title}`)}`);
 
 /**
+ * `run`, for a command that talks to someone else's server.
+ *
+ * A remote command that fails is one step that did not happen — not a reason
+ * to abandon the steps after it. The header above promises that missing CLIs
+ * are reported rather than fatal; a CLI that is present and refuses gets the
+ * same treatment, because the consequence of not doing so was a run that died
+ * on a rejected `git push` and never reached Sanity, the invariants, the
+ * modules or Vercel.
+ */
+function tryRun(cmd, deferral) {
+  console.log(c.dim(`  $ ${cmd}`));
+  try {
+    execSync(cmd, { stdio: "inherit" });
+    return true;
+  } catch {
+    console.log(c.yellow(`  ! \`${cmd}\` failed (see above) — carrying on.`));
+    defer(deferral.what, deferral.how);
+    return false;
+  }
+}
+
+/**
  * Run a command that has been told not to prompt, capturing stdout so we can
  * parse it. stdin is closed rather than inherited: a command that prompts
  * anyway then fails fast instead of hanging on a pipe nobody is reading, and
  * the failure is something we can route on. stderr is captured too — the CLIs
- * here put their most actionable messages there.
+ * here put their most actionable messages there. `quiet` suppresses the echoed
+ * command line, for the git plumbing that is asked a question rather than told
+ * to do something.
  */
-function capture(cmd, args) {
-  console.log(c.dim(`  $ ${[cmd, ...args].join(" ")}`));
+function capture(cmd, args, { quiet = false } = {}) {
+  if (!quiet) console.log(c.dim(`  $ ${[cmd, ...args].join(" ")}`));
   const res = spawnSync(cmd, args, {
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
@@ -415,16 +439,25 @@ function writeSanityEnv(projectId, dataset) {
  * `sanity projects create` and `sanity projects list` do the one thing actually
  * needed here — resolve a project id — and write nothing to disk. .env.local is
  * ours to write, bare and deduplicated.
+ *
+ * `siteUrl` is here for the CORS step below: the project has to be told which
+ * origins are allowed to use it, and one of them is the production URL the
+ * operator typed at step 1.
  */
-async function sanityStep(displayName) {
+async function sanityStep(displayName, siteUrl) {
   // An id supplied up front needs no CLI at all. This is the path that lets a
   // phone or a web session finish the step instead of deferring it.
   const givenId = NON_INTERACTIVE ? pick("sanity.projectId") : undefined;
   if (givenId) {
-    writeSanityEnv(
+    const written = writeSanityEnv(
       String(givenId),
       String(pick("sanity.dataset") || "production"),
     );
+    // A project id handed to us is someone's existing project, so its CORS
+    // policy is asked about rather than assumed — `sanity.cors: true`.
+    if (written) {
+      await sanityCors(sanityRunner(), String(givenId), siteUrl, "existing");
+    }
     return;
   }
 
@@ -480,8 +513,10 @@ async function sanityStep(displayName) {
     const dataset = String(
       await ask("sanity.dataset", "  Dataset", "production"),
     ).trim();
-    if (writeSanityEnv(projectId, dataset))
+    if (writeSanityEnv(projectId, dataset)) {
+      await sanityCors(runner, projectId, siteUrl, "existing");
       await sanityToken(runner, projectId, displayName);
+    }
     return;
   }
 
@@ -546,6 +581,7 @@ async function sanityStep(displayName) {
       await ask("sanity.projectId", "  Paste the project id", "")
     ).trim();
     if (pasted && writeSanityEnv(pasted, dataset)) {
+      await sanityCors(runner, pasted, siteUrl, "create");
       await sanityToken(runner, pasted, displayName);
     }
     return;
@@ -556,6 +592,7 @@ async function sanityStep(displayName) {
   );
   console.log(c.dim(`  https://www.sanity.io/manage/project/${projectId}`));
   if (writeSanityEnv(projectId, dataset)) {
+    await sanityCors(runner, projectId, siteUrl, "create");
     await sanityToken(runner, projectId, displayName);
   }
 }
@@ -663,6 +700,140 @@ async function sanityToken(runner, projectId, displayName) {
   );
 }
 
+/**
+ * Normalise whatever was typed at "Production URL" into the scheme + host +
+ * port form `sanity cors add` wants, or null when it is not a usable origin.
+ *
+ * A value containing `*` is never accepted. A wildcard origin allowed WITH
+ * credentials lets any page on that domain make authenticated requests to the
+ * project, and that is not a decision a scaffolder gets to make on someone's
+ * behalf — see docs/deploy.md.
+ */
+export function toOrigin(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw.includes("*")) return null;
+  // "example.com" is what people actually type at a "Production URL" prompt,
+  // so a value with no scheme gets https. A value that names some OTHER scheme
+  // is rejected rather than re-read as a hostname — "ftp://x" is not an origin,
+  // and bolting https onto it yields the nonsense origin `https://ftp`.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !/^https?:\/\//i.test(raw)) {
+    return null;
+  }
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (url.protocol === "http:" || url.protocol === "https:")
+      return url.origin;
+  } catch {
+    // Not a URL even with a scheme in front of it.
+  }
+  return null;
+}
+
+/**
+ * The origins a scaffolded site actually calls Sanity from: the dev server
+ * always, and the production URL when one was given and is not itself
+ * localhost. Pure and exported so the rules can be checked without a network.
+ */
+export function corsOrigins(siteUrl) {
+  const origins = ["http://localhost:3000"];
+  const origin = toOrigin(siteUrl);
+  if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:|$)/i.test(origin)) {
+    origins.push(origin);
+  }
+  return origins;
+}
+
+/**
+ * Let this site's origins talk to the Sanity project, with credentials.
+ *
+ * A brand new Sanity project has an empty list of allowed origins, and nothing
+ * in the scaffolder's output used to hint at it: the build was green, `pnpm
+ * dev` started, and only the browser console said "Sanity Live is unable to
+ * connect to the Sanity API as the current origin - http://localhost:3000 - is
+ * not in the list of allowed CORS origins", while /studio quietly failed to
+ * finish its login. Every newly scaffolded site hit it, so the step that
+ * creates the project now configures it too.
+ *
+ * `--credentials` is the part that matters. An origin allowed without it may
+ * read published content and nothing else — no Studio session, no drafts, no
+ * live preview.
+ */
+async function sanityCors(runner, projectId, siteUrl, mode) {
+  const origins = corsOrigins(siteUrl);
+  const command = (origin) =>
+    `npx sanity@latest cors add ${origin} --credentials --project-id ${projectId}`;
+  const deferral = {
+    what:
+      `Sanity CORS origins not added to project ${projectId} ` +
+      `(${origins.join(", ")}) — /studio cannot complete its login and ` +
+      "SanityLive cannot connect from the browser",
+    how: origins.map(command).join(" && "),
+  };
+
+  // Creating a project and configuring its origins are the same act, so the
+  // create path just does it. Linking an existing project is not: someone
+  // else's allow-list may be deliberate, and editing it unasked is rude.
+  if (mode === "existing") {
+    const wanted = await confirm(
+      "sanity.cors",
+      `  Allow ${origins.join(" and ")} to use this Sanity project?`,
+      deferral,
+    );
+    if (!wanted) {
+      // "later" has already said its piece via defer(); saying "skipped" on
+      // top of it reads as a contradiction.
+      if (pick("sanity.cors") !== "later") {
+        console.log(
+          c.dim(
+            "  Skipped — the project's existing CORS policy is left alone.",
+          ),
+        );
+      }
+      return;
+    }
+  } else if (pick("sanity.cors") === false) {
+    console.log(c.dim("  CORS origins skipped (`sanity.cors: false`)."));
+    return;
+  } else if (pick("sanity.cors") === "later") {
+    defer(deferral.what, deferral.how);
+    return;
+  }
+
+  if (!runner) {
+    defer(deferral.what, deferral.how);
+    return;
+  }
+
+  console.log(
+    c.dim("  Adding CORS origins (with credentials) to the project…"),
+  );
+  for (const origin of origins) {
+    const result = capture(runner.cmd, [
+      ...runner.pre,
+      "cors",
+      "add",
+      origin,
+      "--credentials",
+      // `--project-id`, not `--project`: the CLI this template depends on
+      // rejects the latter outright ("Nonexistent flag"). Passing it at all
+      // beats relying on sanity.cli.ts reading the env we only just wrote.
+      "--project-id",
+      projectId,
+    ]);
+    const output = `${result.stdout}\n${result.stderr}`.trim();
+    if (result.ok) {
+      console.log(c.green(`  ✓ ${origin} allowed, with credentials`));
+    } else if (/already (exists|added|allowed)|duplicate/i.test(output)) {
+      // Re-running the scaffolder, or scaffolding against a project that was
+      // half set up by hand, is not a failure.
+      console.log(c.dim(`  ${origin} was already allowed — left as it is.`));
+    } else {
+      if (output) console.log(c.dim(output));
+      defer(`Sanity CORS origin not added: ${origin}`, command(origin));
+    }
+  }
+}
+
 // --- Vercel --------------------------------------------------------------
 
 /**
@@ -695,6 +866,130 @@ function pushEnvVar(key, value, target) {
       ),
     );
   }
+}
+
+// --- Git -----------------------------------------------------------------
+
+/**
+ * Whether a push to `origin/<branch>` can go ahead, from the three facts git
+ * hands over for free. Pure and exported: the case that matters — a checkout
+ * whose history has nothing in common with the remote's — is miserable to
+ * reproduce against a real server and trivial to check here.
+ */
+export function pushGuard({ remoteHasBranch, sharedHistory, remoteAhead }) {
+  if (!remoteHasBranch) return { ok: true };
+  if (!sharedHistory) return { ok: false, reason: "unrelated" };
+  if (remoteAhead) return { ok: false, reason: "behind" };
+  return { ok: true };
+}
+
+/** The branch this checkout is on, or main when git will not say. */
+function currentBranch() {
+  const res = capture("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], {
+    quiet: true,
+  });
+  return (res.ok && res.stdout.trim()) || "main";
+}
+
+/**
+ * Push the first commit to origin — or explain, at length, why not.
+ *
+ * A real first run died here. The operator's previous project folder still
+ * existed, so `gh repo create --clone` had refused to clone into it and they
+ * ran the scaffolder inside the old directory instead: a checkout whose
+ * history had nothing to do with the origin it now pointed at. git rejected
+ * the push as a non-fast-forward, execSync threw, and steps 5 through 8 —
+ * Sanity, the invariants, the modules, Vercel — never ran at all.
+ *
+ * Neither half of that is acceptable. Look before pushing, since git can say
+ * in advance that this push cannot work and why; and if the push fails anyway,
+ * treat it as one step that did not happen.
+ */
+function pushToOrigin() {
+  const branch = currentBranch();
+  const remoteUrl =
+    capture("git", ["remote", "get-url", "origin"], {
+      quiet: true,
+    }).stdout.trim() || "origin";
+  const byHand = `git push -u origin ${branch}`;
+
+  // The comparison below is only as good as our copy of the remote, so refuse
+  // to make it on a stale one. `refs/remotes/origin/<branch>` outlives the URL
+  // it came from: a `git remote set-url` — which is what the advice below tells
+  // people to do — leaves the old remote's commits sitting there under the new
+  // remote's name, and judging a push against those is worse than not judging
+  // it at all. A fetch that fails means either an empty remote or an
+  // unreachable one; in both cases let the push itself be the answer, now that
+  // a failed push is survivable.
+  const fetched = capture("git", ["fetch", "origin", branch], { quiet: true });
+  const remoteRef = fetched.ok
+    ? [`origin/${branch}`, "FETCH_HEAD"].find(
+        (ref) =>
+          capture("git", ["rev-parse", "--verify", "--quiet", ref], {
+            quiet: true,
+          }).ok,
+      )
+    : undefined;
+
+  const verdict = pushGuard({
+    remoteHasBranch: !!remoteRef,
+    sharedHistory:
+      !!remoteRef &&
+      capture("git", ["merge-base", "HEAD", remoteRef], { quiet: true }).ok,
+    remoteAhead:
+      !!remoteRef &&
+      capture("git", ["rev-list", "--count", `HEAD..${remoteRef}`], {
+        quiet: true,
+      }).stdout.trim() !== "0",
+  });
+
+  if (verdict.reason === "unrelated") {
+    console.log(c.red(`  ✗ This folder shares no history with ${remoteUrl}.`));
+    console.log(
+      c.dim(
+        `  HEAD and origin/${branch} have no common ancestor, so the push would\n` +
+          "  be rejected. That almost always means this is a leftover clone of a\n" +
+          "  different project rather than a fresh one from the template — check\n" +
+          "  that you are in the directory you think you are in. If this folder\n" +
+          "  really is the new site, point origin somewhere else first:\n" +
+          "    git remote set-url origin <url-of-the-new-repo>",
+      ),
+    );
+    defer(
+      `Nothing pushed — this folder's history is unrelated to ${remoteUrl}`,
+      `git remote -v   # confirm origin is the new repo, then: ${byHand}`,
+    );
+    return;
+  }
+
+  if (verdict.reason === "behind") {
+    console.log(
+      c.yellow(
+        `  ! ${remoteUrl} has commits on ${branch} that this folder does not.`,
+      ),
+    );
+    console.log(
+      c.dim(
+        "  Pushing would be rejected. Either you are in the wrong directory, or\n" +
+          `  the remote moved on — \`git pull --rebase origin ${branch}\`, look at\n` +
+          "  what comes back, and push by hand.",
+      ),
+    );
+    defer(
+      `Nothing pushed — ${remoteUrl} is ahead of this folder on ${branch}`,
+      `git pull --rebase origin ${branch} && ${byHand}`,
+    );
+    return;
+  }
+
+  const result = capture("git", ["push", "-u", "origin", branch]);
+  if (result.ok) {
+    console.log(c.green("  ✓ Pushed"));
+    return;
+  }
+  const why = `${result.stderr}\n${result.stdout}`.trim();
+  if (why) console.log(c.dim(why));
+  defer(`Nothing pushed to ${remoteUrl}`, byHand);
 }
 
 async function main() {
@@ -745,6 +1040,13 @@ async function main() {
     console.log(
       c.yellow("  .env.local already exists — leaving it untouched."),
     );
+    console.log(
+      c.dim(
+        "  A fresh clone of the template has no .env.local, so finding one here\n" +
+          "  means this folder has been scaffolded before. If you expected a new\n" +
+          "  project, check you are in the directory you meant to be in.",
+      ),
+    );
   } else {
     copyFileSync(".env.example", ".env.local");
     console.log(c.green("  ✓ Created .env.local from .env.example"));
@@ -767,9 +1069,18 @@ async function main() {
   try {
     execSync("git rev-parse HEAD", { stdio: "ignore" });
   } catch {
-    run("git add -A");
-    run(`git commit -q -m "Initial commit from website-boilerplate"`);
-    console.log(c.green("  ✓ Initial commit created"));
+    // An unconfigured user.name/user.email fails here. That is one step, not
+    // the run: the push below will have nothing to send and say so.
+    const committed =
+      tryRun("git add -A", {
+        what: "No initial commit — `git add` failed",
+        how: 'git add -A && git commit -m "Initial commit from website-boilerplate"',
+      }) &&
+      tryRun(`git commit -q -m "Initial commit from website-boilerplate"`, {
+        what: "No initial commit — `git commit` failed (is user.email set?)",
+        how: 'git config user.email you@example.com && git commit -m "Initial commit from website-boilerplate"',
+      });
+    if (committed) console.log(c.green("  ✓ Initial commit created"));
   }
 
   // --- GitHub ------------------------------------------------------------
@@ -784,8 +1095,7 @@ async function main() {
       c.dim("  origin already set (template flow) — will push to it."),
     );
     if (await confirm("github.push", "Push current commit to origin?")) {
-      run("git push -u origin main");
-      console.log(c.green("  ✓ Pushed"));
+      pushToOrigin();
     } else {
       console.log(c.dim("  Skipped."));
     }
@@ -804,15 +1114,24 @@ async function main() {
       },
     )
   ) {
-    run(`gh repo create ${name} --private --source=. --remote=origin --push`);
-    console.log(c.green("  ✓ Private repo created and pushed"));
+    if (
+      tryRun(
+        `gh repo create ${name} --private --source=. --remote=origin --push`,
+        {
+          what: `GitHub repo "${name}" not created`,
+          how: `gh repo create ${name} --private --source=. --remote=origin --push`,
+        },
+      )
+    ) {
+      console.log(c.green("  ✓ Private repo created and pushed"));
+    }
   } else {
     console.log(c.dim("  Skipped."));
   }
 
   // --- Sanity ------------------------------------------------------------
   step(5, "Sanity");
-  await sanityStep(rawName);
+  await sanityStep(rawName, siteUrl);
 
   // --- Template health ---------------------------------------------------
   // Run straight after Sanity: this is where a malformed .env.local value gets
@@ -865,41 +1184,55 @@ async function main() {
     )
   ) {
     const scope = pick("vercel.scope");
-    run(`vercel link --yes${scope ? ` --scope ${scope}` : ""}`);
+    const linkCmd = `vercel link --yes${scope ? ` --scope ${scope}` : ""}`;
+    const linked = tryRun(linkCmd, {
+      what: "Vercel not linked, so nothing is deployed yet",
+      how: `${linkCmd} && vercel --prod --yes`,
+    });
 
-    const envVars = readEnvLocal();
-    console.log(c.dim("  Pushing .env.local to Vercel…"));
-    for (const [key, value] of envVars) {
-      if (!value) continue;
-      for (const target of ["development", "preview", "production"]) {
-        // A localhost URL is right for development and wrong everywhere else:
-        // pushed to production it becomes the canonical URL in the metadata,
-        // the sitemap, robots.txt and every OG image.
-        if (
-          target !== "development" &&
-          /^https?:\/\/localhost\b/i.test(value)
-        ) {
-          console.log(c.dim(`    ${key} → ${target} skipped (localhost URL)`));
-          continue;
+    // Without a link there is no project to push anything to, and every
+    // `vercel env add` below would fail the same way for the same reason —
+    // but the run carries on, and the closing to-do list still gets printed.
+    if (linked) {
+      const envVars = readEnvLocal();
+      console.log(c.dim("  Pushing .env.local to Vercel…"));
+      for (const [key, value] of envVars) {
+        if (!value) continue;
+        for (const target of ["development", "preview", "production"]) {
+          // A localhost URL is right for development and wrong everywhere else:
+          // pushed to production it becomes the canonical URL in the metadata,
+          // the sitemap, robots.txt and every OG image.
+          if (
+            target !== "development" &&
+            /^https?:\/\/localhost\b/i.test(value)
+          ) {
+            console.log(
+              c.dim(`    ${key} → ${target} skipped (localhost URL)`),
+            );
+            continue;
+          }
+          pushEnvVar(key, value, target);
         }
-        pushEnvVar(key, value, target);
       }
-    }
-    console.log(c.green("  ✓ Linked and env pushed"));
-    if (
-      !envVars.get("NEXT_PUBLIC_SITE_URL") ||
-      /localhost/i.test(envVars.get("NEXT_PUBLIC_SITE_URL") ?? "")
-    ) {
-      console.log(
-        c.yellow(
-          "  Set NEXT_PUBLIC_SITE_URL to the real domain once you have it —\n" +
-            "  metadata, the sitemap and OG images all read it.",
-        ),
-      );
-    }
+      console.log(c.green("  ✓ Linked and env pushed"));
+      if (
+        !envVars.get("NEXT_PUBLIC_SITE_URL") ||
+        /localhost/i.test(envVars.get("NEXT_PUBLIC_SITE_URL") ?? "")
+      ) {
+        console.log(
+          c.yellow(
+            "  Set NEXT_PUBLIC_SITE_URL to the real domain once you have it —\n" +
+              "  metadata, the sitemap and OG images all read it.",
+          ),
+        );
+      }
 
-    if (await confirm("vercel.deploy", "Deploy a production build now?")) {
-      run("vercel --prod --yes");
+      if (await confirm("vercel.deploy", "Deploy a production build now?")) {
+        tryRun("vercel --prod --yes", {
+          what: "No production deploy yet",
+          how: "vercel --prod --yes",
+        });
+      }
     }
   } else {
     console.log(c.dim("  Skipped."));
